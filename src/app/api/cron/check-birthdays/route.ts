@@ -99,8 +99,24 @@ export async function POST(request: Request) {
 
       if (!todayBirthdayMembers.length) continue;
 
-      // 4. Create activity feed entries and send notifications
+      // 4. Create activity feed entries and send notifications (idempotent)
+      //    Check today's date range to avoid duplicates on re-run
+      const todayStart = `${localDate.getFullYear()}-${monthStr}-${dayStr}T00:00:00Z`;
+      const todayEnd = `${localDate.getFullYear()}-${monthStr}-${dayStr}T23:59:59Z`;
+
       for (const member of todayBirthdayMembers) {
+        // Idempotency guard: skip if birthday activity already exists today
+        const { count: existingCount } = await supabase
+          .from("activity_feed")
+          .select("id", { count: "exact", head: true })
+          .eq("household_id", household.id)
+          .eq("member_id", member.id)
+          .eq("action_type", "birthday")
+          .gte("created_at", todayStart)
+          .lte("created_at", todayEnd);
+
+        if ((existingCount ?? 0) > 0) continue; // Already processed today
+
         birthdayMembers.push({
           memberId: member.id,
           displayName: member.display_name,

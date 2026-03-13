@@ -24,6 +24,7 @@ export function useChallenges() {
 
   const { data: challenges = [], isLoading } = useQuery({
     queryKey: ["challenges", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data } = await supabase

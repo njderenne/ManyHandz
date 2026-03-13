@@ -12,6 +12,7 @@ import {
   AvatarGroup,
   AvatarGroupCount,
 } from "@/components/ui/avatar";
+import { UserMenu } from "./user-menu";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -45,7 +46,9 @@ interface HeaderProps {
   activeHousehold: any;
   onSwitchHousehold: (id: string) => void;
   members: Member[];
+  currentMember: Member | null;
   mode: string;
+  role: string;
 }
 
 export function Header({
@@ -53,7 +56,9 @@ export function Header({
   activeHousehold,
   onSwitchHousehold,
   members,
+  currentMember,
   mode,
+  role,
 }: HeaderProps) {
   const householdName = activeHousehold?.name ?? "ManyHandz";
   const hasMultipleHouseholds = households.length > 1;
@@ -67,7 +72,7 @@ export function Header({
           {hasMultipleHouseholds ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 min-w-0 rounded-lg px-2 py-1 -ml-2 transition-colors hover:bg-accent">
+                <button className="flex items-center gap-2 min-w-0 rounded-lg px-2 py-1 -ml-2 transition-colors hover:bg-accent" aria-label="Switch household">
                   <h1 className="truncate text-lg font-bold text-foreground">
                     {householdName}
                   </h1>
@@ -109,24 +114,36 @@ export function Header({
             {today}
           </span>
 
-          {/* Member avatar stack */}
-          {members.length > 0 && (
+          {/* User Menu (current member avatar as trigger) */}
+          <UserMenu
+            currentMember={currentMember}
+            members={members}
+            role={role}
+          />
+
+          {/* Other member avatars (decorative, hidden on mobile) */}
+          {members.filter((m) => m.id !== currentMember?.id).length > 0 && (
             <AvatarGroup className="hidden sm:flex">
-              {members.slice(0, 5).map((member) => (
-                <Avatar key={member.id} size="sm">
-                  {member.avatar_url ? (
-                    <AvatarImage
-                      src={member.avatar_url}
-                      alt={member.display_name}
-                    />
-                  ) : null}
-                  <AvatarFallback>
-                    {member.display_name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              ))}
-              {members.length > 5 && (
-                <AvatarGroupCount>+{members.length - 5}</AvatarGroupCount>
+              {members
+                .filter((m) => m.id !== currentMember?.id)
+                .slice(0, 4)
+                .map((member) => (
+                  <Avatar key={member.id} size="sm">
+                    {member.avatar_url ? (
+                      <AvatarImage
+                        src={member.avatar_url}
+                        alt={member.display_name}
+                      />
+                    ) : null}
+                    <AvatarFallback>
+                      {member.display_name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ))}
+              {members.filter((m) => m.id !== currentMember?.id).length > 4 && (
+                <AvatarGroupCount>
+                  +{members.filter((m) => m.id !== currentMember?.id).length - 4}
+                </AvatarGroupCount>
               )}
             </AvatarGroup>
           )}
@@ -134,7 +151,7 @@ export function Header({
           {/* Notification bell */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
+              <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
                 <Bell className="size-5" />
               </Button>
             </PopoverTrigger>

@@ -49,6 +49,7 @@ import { SettlementCard } from "@/components/settle-up/settlement-card";
 import type {
   SettlementPayoutType,
   SettlementSourceType,
+  SettlementVia,
 } from "@/lib/supabase/types";
 
 type FilterTab = "all" | SettlementPayoutType;
@@ -126,7 +127,7 @@ export default function SettleUpPage() {
   function handleSettle(settlementId: string, via: string, note?: string) {
     settleSettlement.mutate({
       settlementId,
-      via: via as any,
+      via: via as SettlementVia,
       note,
     });
   }

@@ -4,7 +4,6 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils/cn";
 import { Camera, Upload, X, ChevronLeft, ChevronRight } from "lucide-react";
-import imageCompression from "browser-image-compression";
 import { uploadFile } from "@/lib/supabase/storage";
 
 interface PhotoProofProps {
@@ -31,6 +30,8 @@ export function PhotoProof({
   const handleFile = async (file: File) => {
     setUploading(true);
     try {
+      // Lazy-load browser-image-compression (~50KB) — only needed on upload
+      const imageCompression = (await import("browser-image-compression")).default;
       const compressed = await imageCompression(file, {
         maxSizeMB: 1,
         maxWidthOrHeight: 1920,
@@ -47,6 +48,10 @@ export function PhotoProof({
 
       if (error) throw new Error(error);
 
+      // Revoke previous object URL to prevent memory leak
+      if (preview && preview.startsWith("blob:")) {
+        URL.revokeObjectURL(preview);
+      }
       const url = URL.createObjectURL(compressed);
       setPreview(url);
       onUploaded(uploadedPath);
@@ -99,7 +104,12 @@ export function PhotoProof({
             size="icon"
             variant="destructive"
             className="absolute top-2 right-2 h-8 w-8"
-            onClick={() => setPreview(null)}
+            onClick={() => {
+              if (preview && preview.startsWith("blob:")) {
+                URL.revokeObjectURL(preview);
+              }
+              setPreview(null);
+            }}
           >
             <X className="h-4 w-4" />
           </Button>

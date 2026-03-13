@@ -1,12 +1,36 @@
 import { NextResponse } from "next/server";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { env } from "@/lib/utils/env";
+import { rateLimitAuth, getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
 import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
 
 export async function POST(request: Request) {
   try {
-    const { credential: authResponse, userId } = await request.json();
+    const ip = getClientIp(request);
+    const rl = rateLimitAuth(ip);
+    if (!rl.success) return rateLimitResponse(rl.retryAfterMs);
+
+    const { credential: authResponse } = await request.json();
     const supabase = createServiceClient();
+
+    // SECURITY: Derive userId from the stored credential rather than trusting
+    // a client-supplied userId. This prevents an attacker from providing
+    // a victim's userId to hijack their session.
+    const { data: storedCred } = await supabase
+      .from("webauthn_credentials")
+      .select("id, user_id, public_key, counter, transports")
+      .eq("id", authResponse.id)
+      .single();
+
+    if (!storedCred)
+      return NextResponse.json(
+        { error: "Credential not found" },
+        { status: 400 }
+      );
+
+    // Now use the trusted user_id from the stored credential
+    const userId = storedCred.user_id;
 
     const { data: challengeRow } = await supabase
       .from("webauthn_challenges")
@@ -20,24 +44,11 @@ export async function POST(request: Request) {
     if (!challengeRow)
       return NextResponse.json({ error: "No challenge" }, { status: 400 });
 
-    const { data: storedCred } = await supabase
-      .from("webauthn_credentials")
-      .select("*")
-      .eq("id", authResponse.id)
-      .eq("user_id", userId)
-      .single();
-
-    if (!storedCred)
-      return NextResponse.json(
-        { error: "Credential not found" },
-        { status: 400 }
-      );
-
     const verification = await verifyAuthenticationResponse({
       response: authResponse,
       expectedChallenge: challengeRow.challenge,
-      expectedOrigin: process.env.WEBAUTHN_ORIGIN!,
-      expectedRPID: process.env.WEBAUTHN_RP_ID!,
+      expectedOrigin: env.WEBAUTHN_ORIGIN,
+      expectedRPID: env.WEBAUTHN_RP_ID,
       credential: {
         id: storedCred.id,
         publicKey: Buffer.from(storedCred.public_key, "base64"),
@@ -63,24 +74,48 @@ export async function POST(request: Request) {
       })
       .eq("id", storedCred.id);
 
-    // Clean up
+    // Clean up challenges
     await supabase
       .from("webauthn_challenges")
       .delete()
       .eq("user_id", userId)
       .eq("type", "authentication");
 
-    // Get user profile for session creation
+    // Get user email for session creation
     const { data: profile } = await supabase
       .from("profiles")
       .select("email")
       .eq("id", userId)
       .single();
 
-    return NextResponse.json({ verified: true, email: profile?.email });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (!profile?.email) {
+      return NextResponse.json(
+        { error: "User profile not found" },
+        { status: 400 }
+      );
+    }
+
+    // Create a Supabase session by generating a magic link token.
+    // The client exchanges this token via verifyOtp to establish a proper session.
+    const { data: linkData, error: linkError } =
+      await supabase.auth.admin.generateLink({
+        type: "magiclink",
+        email: profile.email,
+      });
+
+    if (linkError || !linkData?.properties?.hashed_token) {
+      console.error("Failed to generate session link:", linkError);
+      return NextResponse.json(
+        { error: "Failed to create session" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      verified: true,
+      token_hash: linkData.properties.hashed_token,
+    });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -12,6 +12,7 @@ import { ChorePresetSelector } from "@/components/onboarding/chore-preset-select
 import { useChores } from "@/lib/hooks/use-chores";
 import { useHouseholdMode } from "@/lib/hooks/use-household-mode";
 import { useAddPresetChores } from "@/lib/hooks/use-add-preset-chores";
+import type { Chore, ChoreCategory } from "@/lib/supabase/types";
 
 export default function ChoresPage() {
   const router = useRouter();
@@ -67,7 +68,7 @@ export default function ChoresPage() {
 
         <TabsContent value="my-chores" className="mt-4">
           <ChoreList
-            chores={chores as any}
+            chores={chores as Array<Chore & { chore_categories?: ChoreCategory | null }>}
             isLoading={isLoading}
             onEdit={permissions.canEditChores ? handleEdit : undefined}
             onDelete={permissions.canDeleteChores ? handleDelete : undefined}

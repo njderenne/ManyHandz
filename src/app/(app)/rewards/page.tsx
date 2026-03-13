@@ -33,6 +33,9 @@ import { Leaderboard } from "@/components/rewards/leaderboard";
 
 import type { Reward, RewardRedemption, Achievement, Member } from "@/lib/supabase/types";
 
+/** Redemption with joined member and reward data */
+type RedemptionWithJoins = RewardRedemption & { members: Member; rewards: Reward };
+
 export default function RewardsPage() {
   const householdId = useHouseholdStore((s) => s.activeHouseholdId);
   const { features, permissions, isAdmin, mode } = useHouseholdMode();
@@ -47,7 +50,7 @@ export default function RewardsPage() {
       if (!householdId) return [];
       const { data } = await supabase
         .from("rewards")
-        .select("*")
+        .select("id, household_id, name, description, icon, points_cost, is_active, created_by")
         .eq("household_id", householdId)
         .eq("is_active", true)
         .order("points_cost");
@@ -63,7 +66,7 @@ export default function RewardsPage() {
       if (!householdId) return [];
       const { data } = await supabase
         .from("reward_redemptions")
-        .select("*, rewards(*), members(*)")
+        .select("*, rewards!inner(*), members(*)")
         .eq("rewards.household_id", householdId)
         .eq("status", "pending")
         .order("redeemed_at", { ascending: false });
@@ -87,42 +90,25 @@ export default function RewardsPage() {
     enabled: !!currentMember?.id,
   });
 
-  // Redeem reward
+  // Redeem reward (atomic via Postgres RPC — prevents double-spend race conditions)
   const redeemMutation = useMutation({
     mutationFn: async (rewardId: string) => {
       if (!currentMember?.id) throw new Error("Not logged in");
       const reward = rewards.find((r) => r.id === rewardId);
       if (!reward) throw new Error("Reward not found");
-      if (currentMember.points_balance < reward.points_cost) {
-        throw new Error("Not enough points");
+
+      const { error } = await supabase.rpc("redeem_reward", {
+        p_member_id: currentMember.id,
+        p_reward_id: rewardId,
+        p_points_cost: reward.points_cost,
+      });
+      if (error) {
+        throw new Error(error.message.includes("Insufficient") ? "Not enough points" : error.message);
       }
-
-      const { data, error } = await supabase
-        .from("reward_redemptions")
-        .insert({
-          reward_id: rewardId,
-          member_id: currentMember.id,
-          points_spent: reward.points_cost,
-          status: "pending",
-        })
-        .select()
-        .single();
-      if (error) throw error;
-
-      // Deduct points
-      await supabase
-        .from("members")
-        .update({
-          points_balance: currentMember.points_balance - reward.points_cost,
-        })
-        .eq("id", currentMember.id);
-
-      return data;
     },
     onSuccess: () => {
       toast.success("Reward redeemed! Waiting for approval.");
       queryClient.invalidateQueries({ queryKey: ["members"] });
-      queryClient.invalidateQueries({ queryKey: ["current-member"] });
       queryClient.invalidateQueries({ queryKey: ["pending-redemptions"] });
     },
     onError: (err) => {
@@ -130,7 +116,7 @@ export default function RewardsPage() {
     },
   });
 
-  // Approve/reject redemption
+  // Approve/reject redemption (reject uses atomic RPC for safe refund)
   const handleRedemption = useMutation({
     mutationFn: async ({
       redemptionId,
@@ -139,30 +125,23 @@ export default function RewardsPage() {
       redemptionId: string;
       action: "approved" | "rejected";
     }) => {
-      const { error } = await supabase
-        .from("reward_redemptions")
-        .update({
-          status: action,
-          approved_by: currentMember?.id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", redemptionId);
-      if (error) throw error;
-
-      // If rejected, refund points
-      if (action === "rejected") {
-        const redemption = pendingRedemptions.find((r) => r.id === redemptionId);
-        if (redemption) {
-          const member = members.find((m) => m.id === redemption.member_id);
-          if (member) {
-            await supabase
-              .from("members")
-              .update({
-                points_balance: member.points_balance + redemption.points_spent,
-              })
-              .eq("id", member.id);
-          }
-        }
+      if (action === "approved") {
+        const { error } = await supabase
+          .from("reward_redemptions")
+          .update({
+            status: "approved",
+            approved_by: currentMember?.id,
+            approved_at: new Date().toISOString(),
+          })
+          .eq("id", redemptionId);
+        if (error) throw error;
+      } else {
+        // Atomic refund via RPC — prevents race conditions
+        const { error } = await supabase.rpc("refund_redemption", {
+          p_redemption_id: redemptionId,
+          p_approved_by: currentMember?.id,
+        });
+        if (error) throw error;
       }
     },
     onSuccess: (_, { action }) => {
@@ -336,18 +315,18 @@ export default function RewardsPage() {
                           className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                           style={{
                             backgroundColor:
-                              (redemption as any).members?.favorite_color || "#6366f1",
+                              (redemption as RedemptionWithJoins).members?.favorite_color || "#6366f1",
                           }}
                         >
-                          {((redemption as any).members?.display_name || "?")
+                          {((redemption as RedemptionWithJoins).members?.display_name || "?")
                             .charAt(0)
                             .toUpperCase()}
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">
-                            {(redemption as any).members?.display_name} wants{" "}
+                            {(redemption as RedemptionWithJoins).members?.display_name} wants{" "}
                             <span className="text-primary">
-                              {(redemption as any).rewards?.name}
+                              {(redemption as RedemptionWithJoins).rewards?.name}
                             </span>
                           </p>
                           <p className="text-xs text-muted-foreground">

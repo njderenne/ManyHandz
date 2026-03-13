@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { verifyHouseholdMembership } from "@/lib/utils/auth-checks";
 
 interface YearInReviewStats {
   year: number;
@@ -57,6 +58,12 @@ export async function GET(request: Request) {
       );
     }
 
+    // Verify user is an active member of this household
+    const member = await verifyHouseholdMembership(supabase, user.id, householdId);
+    if (!member) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const serviceClient = createServiceClient();
 
     const yearStart = `${year}-01-01T00:00:00Z`;
@@ -80,7 +87,8 @@ export async function GET(request: Request) {
         .eq("household_id", householdId),
       serviceClient
         .from("completions")
-        .select("id, completed_by, points_earned, speed_bonus, completed_at, actual_minutes, assignment_id")
+        .select("id, completed_by, points_earned, speed_bonus, completed_at, actual_minutes, assignment_id, assignments!inner(household_id)")
+        .eq("assignments.household_id", householdId)
         .gte("completed_at", yearStart)
         .lte("completed_at", yearEnd)
         .in("status", ["approved", "ai_approved"]),
@@ -297,10 +305,9 @@ export async function GET(request: Request) {
     };
 
     return NextResponse.json({ success: true, stats });
-  } catch (error: any) {
-    console.error("Year-in-review error:", error);
+  } catch {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

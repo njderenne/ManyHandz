@@ -7,8 +7,14 @@ import { CreditCard, AlertCircle, Clock, CheckCircle } from "lucide-react";
 import type { Subscription } from "@/lib/supabase/types";
 import { format } from "date-fns";
 
+/** Only the fields this component actually reads */
+type SubscriptionSlice = Pick<
+  Subscription,
+  "status" | "price_id" | "current_period_end" | "cancel_at_period_end"
+>;
+
 interface SubscriptionStatusProps {
-  subscription: Subscription | null;
+  subscription: SubscriptionSlice | null;
   className?: string;
 }
 

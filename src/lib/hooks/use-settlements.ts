@@ -85,20 +85,39 @@ export function useSettlements(filter?: SettlementPayoutType | "all") {
   const householdId = useHouseholdStore((s) => s.activeHouseholdId);
   const queryClient = useQueryClient();
 
-  // ---- Fetch all settlements for the household ----
+  // ---- Fetch settlements for the household (pending + last 90 days) ----
   const { data: settlements = [], isLoading } = useQuery({
     queryKey: ["settlements", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
-      const { data, error } = await supabase
+
+      // Fetch all pending settlements (unbounded — these need attention)
+      const { data: pending, error: pendingError } = await supabase
         .from("settlements")
         .select(
           "*, from_member:members!from_member_id(*), to_member:members!to_member_id(*)"
         )
         .eq("household_id", householdId)
+        .eq("status", "pending")
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data || []) as SettlementWithMembers[];
+      if (pendingError) throw pendingError;
+
+      // Fetch resolved settlements from last 90 days only
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 90);
+      const { data: resolved, error: resolvedError } = await supabase
+        .from("settlements")
+        .select(
+          "*, from_member:members!from_member_id(*), to_member:members!to_member_id(*)"
+        )
+        .eq("household_id", householdId)
+        .neq("status", "pending")
+        .gte("created_at", cutoff.toISOString())
+        .order("created_at", { ascending: false });
+      if (resolvedError) throw resolvedError;
+
+      return [...(pending || []), ...(resolved || [])] as SettlementWithMembers[];
     },
     enabled: !!householdId,
   });

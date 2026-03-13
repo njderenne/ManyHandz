@@ -118,7 +118,7 @@ export function SettleUpModal({
     const handleField = VIA_TO_HANDLE_FIELD[selectedVia];
     if (!handleField) return null;
 
-    const handle = (settlement.to_member as any)[handleField];
+    const handle = settlement.to_member[handleField as keyof typeof settlement.to_member] as string | null | undefined;
     if (!handle) return null;
 
     const amount =

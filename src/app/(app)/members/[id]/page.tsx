@@ -86,7 +86,7 @@ export default function MemberProfilePage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("members")
-        .select("*")
+        .select("id, household_id, user_id, display_name, avatar_url, bio, birthday, favorite_color, role, points_balance, total_xp, current_level, current_streak, longest_streak, venmo_handle, paypal_handle, cashapp_handle, apple_cash_phone, is_active, away_until, away_reason, mute_celebrations, allowance_enabled, allowance_payout_type, allowance_amount_cents, allowance_reward_description, allowance_threshold_pct, joined_at")
         .eq("id", memberId)
         .single();
       return data as Member | null;
@@ -169,7 +169,7 @@ export default function MemberProfilePage() {
       if (!memberId) return [];
       const { data } = await supabase
         .from("goals")
-        .select("*")
+        .select("id, household_id, member_id, title, description, icon, target_points, current_points, status, completed_at, created_at")
         .eq("member_id", memberId)
         .eq("status", "active")
         .order("created_at", { ascending: false })
@@ -188,7 +188,7 @@ export default function MemberProfilePage() {
       if (!memberId) return [];
       const { data } = await supabase
         .from("activity_feed")
-        .select("*")
+        .select("id, household_id, member_id, action_type, metadata, reactions, created_at")
         .eq("member_id", memberId)
         .order("created_at", { ascending: false })
         .limit(10);
@@ -209,17 +209,19 @@ export default function MemberProfilePage() {
       if (!currentMemberId || !memberId || !householdId) throw new Error("Missing context");
       const amount = parseInt(giftAmount, 10);
       if (isNaN(amount) || amount <= 0) throw new Error("Invalid amount");
-      if ((currentMember?.points_balance ?? 0) < amount) throw new Error("Insufficient points");
 
-      const { error } = await supabase.from("point_gifts").insert({
-        household_id: householdId,
-        from_member_id: currentMemberId,
-        to_member_id: memberId,
-        points: amount,
-        note: giftNote || null,
-        gift_type: "general" as const,
+      // Atomic via Postgres RPC — prevents double-spend race conditions
+      const { error } = await supabase.rpc("transfer_points", {
+        p_from_member_id: currentMemberId,
+        p_to_member_id: memberId,
+        p_household_id: householdId,
+        p_points: amount,
+        p_note: giftNote || null,
+        p_gift_type: "general",
       });
-      if (error) throw error;
+      if (error) {
+        throw new Error(error.message.includes("Insufficient") ? "Insufficient points" : error.message);
+      }
     },
     onSuccess: () => {
       toast.success("Points gifted!");

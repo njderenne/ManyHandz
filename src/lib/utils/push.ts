@@ -6,6 +6,7 @@
 
 import webpush from "web-push";
 import { createServiceClient } from "@/lib/supabase/service";
+import { env } from "@/lib/utils/env";
 
 let vapidInitialized = false;
 
@@ -13,8 +14,8 @@ function ensureVapid() {
   if (vapidInitialized) return;
   webpush.setVapidDetails(
     "mailto:support@manyhandz.com",
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-    process.env.VAPID_PRIVATE_KEY!
+    env.VAPID_PUBLIC_KEY,
+    env.VAPID_PRIVATE_KEY
   );
   vapidInitialized = true;
 }
@@ -42,7 +43,7 @@ export async function sendPushToUser(
 
   const { data: subscriptions } = await supabase
     .from("push_subscriptions")
-    .select("*")
+    .select("id, endpoint, p256dh, auth")
     .eq("user_id", userId);
 
   if (!subscriptions?.length) return;

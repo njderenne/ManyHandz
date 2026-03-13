@@ -46,10 +46,14 @@ import type {
   Assignment,
   Chore,
   Member,
+  Household,
   ChecklistProgressItem,
   AssignmentComment as CommentType,
   Completion,
 } from "@/lib/supabase/types";
+
+/** Member data with joined household from useHouseholdMode */
+type MemberWithHousehold = Member & { households: Household | null };
 
 // ---------------------------------------------------------------------------
 // Status timeline config
@@ -184,7 +188,7 @@ export default function AssignmentDetailPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("completions")
-        .select("*")
+        .select("id, assignment_id, completed_by, completed_at, before_photo_url, after_photo_url, extra_photo_urls, notes, points_earned, speed_bonus, actual_minutes, approved_by, approved_at, rejection_reason, needs_approval, ai_verification_id, status")
         .eq("assignment_id", assignmentId)
         .maybeSingle();
       return data as Completion | null;
@@ -238,7 +242,7 @@ export default function AssignmentDetailPage() {
     mutationFn: async (progress: ChecklistProgressItem[]) => {
       const { error } = await supabase
         .from("assignments")
-        .update({ checklist_progress: JSON.stringify(progress) as any })
+        .update({ checklist_progress: progress as unknown as ChecklistProgressItem[] })
         .eq("id", assignmentId);
       if (error) throw error;
     },
@@ -353,7 +357,7 @@ export default function AssignmentDetailPage() {
   const handleCompletionSubmit = useCallback(
     (data: any) => {
       const chore = assignment?.chores;
-      const household = (memberData as any)?.households;
+      const household = (memberData as MemberWithHousehold | null | undefined)?.households;
 
       completeAssignment.mutate(
         {

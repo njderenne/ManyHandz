@@ -17,6 +17,14 @@ export async function POST(
     const body = await request.json();
     const { status, rejection_reason } = body;
 
+    // Validate status input
+    if (!status || !["approved", "rejected"].includes(status)) {
+      return NextResponse.json(
+        { error: "status must be 'approved' or 'rejected'" },
+        { status: 400 }
+      );
+    }
+
     // Get the completion for this assignment
     const { data: completion } = await supabase
       .from("completions")
@@ -80,9 +88,7 @@ export async function POST(
     }
 
     return NextResponse.json({ success: true, status });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

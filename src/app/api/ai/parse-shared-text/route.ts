@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimitAI, rateLimitResponse } from "@/lib/utils/rate-limit";
 import OpenAI from "openai";
 
 interface ParseRequest {
@@ -66,12 +67,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const rl = rateLimitAI(user.id);
+    if (!rl.success) return rateLimitResponse(rl.retryAfterMs);
+
     const body = (await request.json()) as ParseRequest;
     const { text, title, url } = body;
 
     if (!text && !title) {
       return NextResponse.json(
         { error: "text or title required" },
+        { status: 400 }
+      );
+    }
+
+    // Limit input size to prevent AI cost abuse (10KB max)
+    const MAX_INPUT_LENGTH = 10_000;
+    const combinedLength =
+      (text?.length ?? 0) + (title?.length ?? 0) + (url?.length ?? 0);
+    if (combinedLength > MAX_INPUT_LENGTH) {
+      return NextResponse.json(
+        { error: `Input too large (max ${MAX_INPUT_LENGTH} characters)` },
         { status: 400 }
       );
     }
@@ -148,10 +163,9 @@ Rules:
     };
 
     return NextResponse.json({ success: true, result });
-  } catch (error: any) {
-    console.error("AI parse-shared-text error:", error);
+  } catch {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

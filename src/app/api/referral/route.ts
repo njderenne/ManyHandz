@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const serviceClient = createServiceClient();
     const { data: existingCode } = await serviceClient
       .from("referral_codes")
-      .select("*")
+      .select("id, referrer_household_id, code, uses, max_uses, is_active, created_at")
       .eq("referrer_household_id", householdId)
       .eq("is_active", true)
       .single();
@@ -94,10 +94,9 @@ export async function POST(request: NextRequest) {
       code: newCode,
       message: "Referral code generated",
     });
-  } catch (error: any) {
-    console.error("Referral POST error:", error);
+  } catch {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -148,7 +147,7 @@ export async function GET(request: NextRequest) {
     // Fetch all referral codes for this household
     const { data: codes, error: codesError } = await serviceClient
       .from("referral_codes")
-      .select("*")
+      .select("id, code, uses, max_uses, is_active, created_at")
       .eq("referrer_household_id", householdId)
       .order("created_at", { ascending: false });
 
@@ -165,7 +164,7 @@ export async function GET(request: NextRequest) {
       const { data: redemptionData, error: redemptionsError } =
         await serviceClient
           .from("referral_redemptions")
-          .select("*")
+          .select("id, referral_code_id, referrer_credit_applied")
           .in("referral_code_id", codeIds);
 
       if (redemptionsError) throw redemptionsError;
@@ -193,10 +192,9 @@ export async function GET(request: NextRequest) {
         })),
       },
     });
-  } catch (error: any) {
-    console.error("Referral GET error:", error);
+  } catch {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

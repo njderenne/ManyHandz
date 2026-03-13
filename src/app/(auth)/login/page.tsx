@@ -133,14 +133,15 @@ export default function LoginPage() {
       }
 
       const options = await optionsRes.json();
-      const { userId, ...authOptions } = options;
+      // Strip userId from options — server derives it from the credential
+      const { userId: _uid, ...authOptions } = options;
 
       const credential = await startAuthentication({ optionsJSON: authOptions });
 
       const verifyRes = await fetch("/api/auth/webauthn/login-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential, userId }),
+        body: JSON.stringify({ credential }),
       });
 
       if (!verifyRes.ok) {
@@ -148,11 +149,24 @@ export default function LoginPage() {
         return;
       }
 
-      const { verified } = await verifyRes.json();
-      if (verified) {
+      const { verified, token_hash } = await verifyRes.json();
+      if (verified && token_hash) {
+        // Exchange the server-generated token for a proper Supabase session
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          token_hash,
+          type: "magiclink",
+        });
+
+        if (otpError) {
+          toast.error("Failed to create session: " + otpError.message);
+          return;
+        }
+
         toast.success("Signed in with passkey");
         router.push(redirectTo);
         router.refresh();
+      } else {
+        toast.error("Passkey verification failed");
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "NotAllowedError") {

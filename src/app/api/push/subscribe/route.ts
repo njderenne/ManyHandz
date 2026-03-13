@@ -19,8 +19,8 @@ export async function POST(request: Request) {
 
     if (error) throw error;
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -33,7 +33,7 @@ export async function DELETE(request: Request) {
     const { endpoint } = await request.json();
     await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint).eq("user_id", user.id);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

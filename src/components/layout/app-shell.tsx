@@ -16,7 +16,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { navTabs, mode, role, config } = useHouseholdMode();
   const { households, activeHousehold, setActiveHousehold } = useHouseholds();
   const { isTrialing, daysRemaining } = useSubscription();
-  const { members } = useMembers();
+  const { members, currentMember } = useMembers();
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
   const trialBannerDismissed = useUIStore((s) => s.trialBannerDismissed);
@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         members={members}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
-        householdName={(activeHousehold as any)?.name ?? ""}
+        householdName={activeHousehold?.name ?? ""}
       />
 
       {/* Main content area */}
@@ -73,7 +73,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           activeHousehold={activeHousehold}
           onSwitchHousehold={(id: string) => setActiveHousehold(id)}
           members={members}
+          currentMember={currentMember ?? null}
           mode={mode}
+          role={role}
         />
 
         {/* Page content */}

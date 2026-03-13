@@ -19,6 +19,7 @@ export function useSwapRequests() {
 
   const { data: swapRequests = [], isLoading } = useQuery({
     queryKey: ["swap-requests", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data } = await supabase
@@ -74,7 +75,7 @@ export function useSwapRequests() {
         // Get the swap request details
         const { data: swap, error: fetchError } = await supabase
           .from("swap_requests")
-          .select("*")
+          .select("id, requester_assignment_id, target_assignment_id, requester_id, target_id")
           .eq("id", id)
           .single();
         if (fetchError || !swap) throw new Error("Swap not found");

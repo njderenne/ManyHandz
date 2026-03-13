@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     // 1. Get all active challenges
     const { data: challenges, error: fetchError } = await supabase
       .from("bonus_challenges")
-      .select("*")
+      .select("id, household_id, title, challenge_type, target_value, bonus_points, points_multiplier, starts_at, ends_at, status, created_by")
       .eq("status", "active");
 
     if (fetchError) throw fetchError;
@@ -54,12 +54,14 @@ export async function POST(request: Request) {
 
       // --- complete_count: did the household reach the target number of completions? ---
       if (challenge.challenge_type === "complete_count") {
+        // Scope completions to this challenge's household via assignments join
         const { count, error: countError } = await supabase
           .from("completions")
-          .select("id", { count: "exact", head: true })
+          .select("id, assignments!inner(household_id)", { count: "exact", head: true })
+          .eq("assignments.household_id", challenge.household_id)
           .gte("completed_at", challenge.starts_at)
           .lte("completed_at", challenge.ends_at)
-          .eq("status", "approved");
+          .in("status", ["approved", "ai_approved"]);
 
         if (countError) {
           console.error(
@@ -69,22 +71,7 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Also include ai_approved completions
-        const { count: aiCount, error: aiCountError } = await supabase
-          .from("completions")
-          .select("id", { count: "exact", head: true })
-          .gte("completed_at", challenge.starts_at)
-          .lte("completed_at", challenge.ends_at)
-          .eq("status", "ai_approved");
-
-        if (aiCountError) {
-          console.error(
-            `Failed to count AI completions for challenge ${challenge.id}:`,
-            aiCountError
-          );
-        }
-
-        const totalCompletions = (count || 0) + (aiCount || 0);
+        const totalCompletions = count || 0;
         const target = challenge.target_value || 0;
 
         if (totalCompletions >= target) {
@@ -144,7 +131,7 @@ export async function POST(request: Request) {
         // Get all active members of the household to award bonus points
         const { data: householdMembers, error: membersError } = await supabase
           .from("members")
-          .select("id, points_balance, total_xp")
+          .select("id")
           .eq("household_id", challenge.household_id)
           .eq("is_active", true);
 
@@ -154,15 +141,12 @@ export async function POST(request: Request) {
             membersError
           );
         } else if (householdMembers?.length) {
-          // Award bonus points to all active household members
+          // Award bonus points atomically via RPC to prevent race conditions
           for (const member of householdMembers) {
-            const { error: pointsError } = await supabase
-              .from("members")
-              .update({
-                points_balance: member.points_balance + challenge.bonus_points,
-                total_xp: member.total_xp + challenge.bonus_points,
-              })
-              .eq("id", member.id);
+            const { error: pointsError } = await supabase.rpc("award_bonus_points", {
+              p_member_id: member.id,
+              p_bonus_points: challenge.bonus_points,
+            });
 
             if (pointsError) {
               console.error(

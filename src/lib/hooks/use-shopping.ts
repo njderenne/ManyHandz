@@ -92,7 +92,7 @@ export function useShopping() {
       if (!householdId) return [];
       const { data, error } = await supabase
         .from("shopping_lists")
-        .select("*")
+        .select("id, household_id, name, icon, sort_order, is_archived, recurring_items, created_by, created_at")
         .eq("household_id", householdId)
         .eq("is_archived", false)
         .order("sort_order", { ascending: true });
@@ -170,7 +170,7 @@ export function useShoppingItems(listId: string | null) {
       if (!listId || !householdId) return [];
       const { data, error } = await supabase
         .from("shopping_items")
-        .select("*")
+        .select("id, list_id, household_id, name, quantity, category, note, is_checked, checked_by, checked_at, assigned_to, added_by, created_at")
         .eq("list_id", listId)
         .eq("household_id", householdId)
         .order("created_at", { ascending: true });

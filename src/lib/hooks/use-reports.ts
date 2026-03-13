@@ -42,6 +42,7 @@ export function useReports() {
 
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ["weekly-reports", householdId],
+    staleTime: 10 * 60 * 1000, // 10 minutes — reports generated weekly
     queryFn: async () => {
       if (!householdId) return [];
       const { data } = await supabase

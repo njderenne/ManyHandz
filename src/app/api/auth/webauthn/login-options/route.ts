@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { env } from "@/lib/utils/env";
+import { rateLimitAuth, getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
 import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rl = rateLimitAuth(ip);
+    if (!rl.success) return rateLimitResponse(rl.retryAfterMs);
+
     const { email } = await request.json();
     const supabase = createServiceClient();
 
@@ -15,8 +21,14 @@ export async function POST(request: Request) {
       .eq("email", email)
       .single();
 
-    if (!profile)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // Return the same generic error for both "user not found" and "no passkeys"
+    // to prevent email enumeration attacks
+    if (!profile) {
+      return NextResponse.json(
+        { error: "No passkeys available for this account" },
+        { status: 400 }
+      );
+    }
 
     const { data: credentials } = await supabase
       .from("webauthn_credentials")
@@ -25,13 +37,13 @@ export async function POST(request: Request) {
 
     if (!credentials?.length) {
       return NextResponse.json(
-        { error: "No passkeys registered" },
+        { error: "No passkeys available for this account" },
         { status: 400 }
       );
     }
 
     const options = await generateAuthenticationOptions({
-      rpID: process.env.WEBAUTHN_RP_ID!,
+      rpID: env.WEBAUTHN_RP_ID,
       allowCredentials: credentials.map((c) => ({
         id: c.id,
         transports: (c.transports || []) as AuthenticatorTransportFuture[],
@@ -45,10 +57,10 @@ export async function POST(request: Request) {
       type: "authentication",
     });
 
-    return NextResponse.json({ ...options, userId: profile.id });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // NOTE: userId intentionally NOT returned to client — login-verify
+    // derives it from the stored credential to prevent session hijacking.
+    return NextResponse.json(options);
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

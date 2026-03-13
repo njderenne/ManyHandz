@@ -11,12 +11,19 @@ export function useAssignments(filters?: { status?: string; memberId?: string; d
 
   const { data: assignments = [], isLoading } = useQuery({
     queryKey: ["assignments", householdId, filters],
+    staleTime: 60 * 1000, // 1 min — assignments change frequently
     queryFn: async () => {
       if (!householdId) return [];
+      // Bound to last 90 days to prevent unbounded growth
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 90);
+      const cutoffDate = cutoff.toISOString().split("T")[0];
+
       let query = supabase
         .from("assignments")
         .select("*, chores(*), members!assigned_to(*)")
         .eq("household_id", householdId)
+        .gte("due_date", cutoffDate)
         .order("due_date", { ascending: true });
 
       if (filters?.status) query = query.eq("status", filters.status);

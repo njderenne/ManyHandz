@@ -7,6 +7,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { verifyHouseholdMembership } from "@/lib/utils/auth-checks";
+import { rateLimitAI, rateLimitResponse } from "@/lib/utils/rate-limit";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -19,6 +21,13 @@ interface VerifyRequest {
   choreDescription?: string;
 }
 
+/** Completion with joined assignment data (household_id) from Supabase query */
+type CompletionWithAssignment = {
+  id: string;
+  assignments: { household_id: string };
+  [key: string]: unknown;
+};
+
 interface VerificationResult {
   confidence_score: number;
   task_completed: boolean;
@@ -29,11 +38,43 @@ interface VerificationResult {
   reference_comparison: string | null;
 }
 
+/** Allowed hostname patterns for image fetching (SSRF protection) */
+const ALLOWED_IMAGE_HOSTS = [
+  /\.supabase\.co$/,
+  /\.supabase\.in$/,
+];
+
 async function fetchImageAsBase64(url: string): Promise<string> {
   // Photos from the completion modal arrive as data: URLs — return as-is
   if (url.startsWith("data:")) return url;
+
+  // SSRF protection: only allow fetching from known hosts
+  try {
+    const parsed = new URL(url);
+    const isAllowed = ALLOWED_IMAGE_HOSTS.some((pattern) =>
+      pattern.test(parsed.hostname)
+    );
+    if (!isAllowed) {
+      throw new Error(`Image host not allowed: ${parsed.hostname}`);
+    }
+    // Block non-HTTP(S) protocols
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new Error(`Protocol not allowed: ${parsed.protocol}`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Image host")) throw e;
+    if (e instanceof Error && e.message.startsWith("Protocol")) throw e;
+    throw new Error("Invalid image URL");
+  }
+
   const response = await fetch(url);
   const buffer = await response.arrayBuffer();
+
+  // Limit image size to 10MB
+  if (buffer.byteLength > 10 * 1024 * 1024) {
+    throw new Error("Image too large (max 10MB)");
+  }
+
   const base64 = Buffer.from(buffer).toString("base64");
   const contentType = response.headers.get("content-type") || "image/jpeg";
   return `data:${contentType};base64,${base64}`;
@@ -216,6 +257,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const rl = rateLimitAI(user.id);
+    if (!rl.success) return rateLimitResponse(rl.retryAfterMs);
+
     const body = (await request.json()) as VerifyRequest;
     const {
       completionId,
@@ -249,7 +293,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const householdId = (completion as any).assignments.household_id;
+    const householdId = (completion as unknown as CompletionWithAssignment).assignments.household_id;
+
+    // Verify user is an active member of this household
+    const member = await verifyHouseholdMembership(supabase, user.id, householdId);
+    if (!member) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Get household AI settings
     const { data: household } = await serviceClient
@@ -274,7 +324,8 @@ export async function POST(request: Request) {
 
     const { data: monthlyVerifications } = await serviceClient
       .from("ai_verifications")
-      .select("cost_cents")
+      .select("cost_cents, completions!inner(assignments!inner(household_id))")
+      .eq("completions.assignments.household_id", householdId)
       .gte("created_at", startOfMonth.toISOString());
 
     const totalCostCents = (monthlyVerifications ?? []).reduce(
@@ -395,10 +446,9 @@ export async function POST(request: Request) {
         cost_cents: Math.round(cost_cents),
       },
     });
-  } catch (error: any) {
-    console.error("AI verify-completion error:", error);
+  } catch {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

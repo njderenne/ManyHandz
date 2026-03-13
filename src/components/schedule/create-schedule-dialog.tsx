@@ -45,9 +45,14 @@ import { useRotationGroups } from "@/lib/hooks/use-rotation-groups";
 import { getCategoryColor } from "@/lib/constants/categories";
 import { getFrequencyLabel } from "@/lib/utils/rotation";
 
+import type { Chore, ChoreCategory } from "@/lib/supabase/types";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** Chore with joined category from useChores() */
+type ChoreWithCategory = Chore & { chore_categories: ChoreCategory | null };
 
 type ScheduleType = "one-off" | "recurring";
 type Frequency = "daily" | "weekly" | "biweekly" | "monthly";
@@ -129,14 +134,14 @@ export function CreateScheduleDialog({
   // Derived data
   // -----------------------------------------------------------------------
   const selectedChore = useMemo(
-    () => (chores as any[]).find((c) => c.id === selectedChoreId),
+    () => (chores as ChoreWithCategory[]).find((c) => c.id === selectedChoreId),
     [chores, selectedChoreId]
   );
 
   // Group chores by category for step 1
   const choresByCategory = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    for (const chore of chores as any[]) {
+    const groups: Record<string, ChoreWithCategory[]> = {};
+    for (const chore of chores as ChoreWithCategory[]) {
       const catName = chore.chore_categories?.name ?? "General";
       if (!groups[catName]) groups[catName] = [];
       groups[catName].push(chore);
@@ -320,7 +325,7 @@ export function CreateScheduleDialog({
             <div className="space-y-4">
               {filteredChoresByCategory.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  {(chores as any[]).length === 0
+                  {(chores as ChoreWithCategory[]).length === 0
                     ? "No chores created yet. Add some from the Chores page first!"
                     : "No chores match your search."}
                 </p>

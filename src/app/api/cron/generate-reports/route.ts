@@ -87,7 +87,7 @@ export async function POST(request: Request) {
         // --- a. Get all active members of this household ---
         const { data: members } = await supabase
           .from("members")
-          .select("*")
+          .select("id, display_name, role, current_streak, longest_streak, allowance_enabled, allowance_payout_type, allowance_amount_cents, allowance_reward_description, allowance_threshold_pct")
           .eq("household_id", householdId)
           .eq("is_active", true);
 
@@ -103,10 +103,11 @@ export async function POST(request: Request) {
 
         const assignments = weekAssignments || [];
 
-        // --- Get completions for this week ---
+        // --- Get completions for this week (scoped to household) ---
         const { data: weekCompletions } = await supabase
           .from("completions")
-          .select("id, completed_by, points_earned, speed_bonus, completed_at")
+          .select("id, completed_by, points_earned, speed_bonus, completed_at, assignments!inner(household_id)")
+          .eq("assignments.household_id", householdId)
           .gte("completed_at", weekStart.toISOString())
           .lte("completed_at", weekEnd.toISOString())
           .in("status", ["approved", "ai_approved"]);
@@ -274,6 +275,19 @@ export async function POST(request: Request) {
           // Check if completion rate meets threshold
           const threshold = member.allowance_threshold_pct || 80;
           if (report.completionRate < threshold) continue;
+
+          // Idempotency: skip if an allowance settlement already exists for
+          // this member during the current report week
+          const { count: existingAllowanceCount } = await supabase
+            .from("settlements")
+            .select("id", { count: "exact", head: true })
+            .eq("household_id", householdId)
+            .eq("to_member_id", member.id)
+            .eq("source_type", "allowance")
+            .gte("created_at", weekStart.toISOString())
+            .lte("created_at", weekEnd.toISOString());
+
+          if ((existingAllowanceCount ?? 0) > 0) continue;
 
           // Find a parent/manager member to be the "from" side of the settlement
           const parentMember = members.find(

@@ -16,6 +16,7 @@ export function usePolls() {
 
   const { data: polls = [], isLoading } = useQuery({
     queryKey: ["polls", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase

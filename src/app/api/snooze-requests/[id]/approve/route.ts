@@ -17,6 +17,14 @@ export async function POST(
     const body = await request.json();
     const { status, denial_reason } = body;
 
+    // Validate status input
+    if (!status || !["approved", "denied"].includes(status)) {
+      return NextResponse.json(
+        { error: "status must be 'approved' or 'denied'" },
+        { status: 400 }
+      );
+    }
+
     // Get snooze request
     const { data: snoozeRequest } = await supabase
       .from("snooze_requests")
@@ -98,9 +106,7 @@ export async function POST(
     }
 
     return NextResponse.json({ success: true, status });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

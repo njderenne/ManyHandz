@@ -18,7 +18,7 @@ export function useQuickTasks() {
       if (!householdId) return [];
       const { data, error } = await supabase
         .from("quick_tasks")
-        .select("*")
+        .select("id, household_id, title, is_completed, completed_by, completed_at, created_by, created_at")
         .eq("household_id", householdId)
         .order("created_at", { ascending: false });
       if (error) throw error;

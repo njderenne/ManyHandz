@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import {
   startOfWeek,
@@ -12,7 +13,6 @@ import {
   format,
   parseISO,
   isWithinInterval,
-  differenceInDays,
 } from "date-fns";
 import {
   Scale,
@@ -49,10 +49,28 @@ import { Separator } from "@/components/ui/separator";
 
 import { FairnessScore } from "@/components/fairness/fairness-score";
 import { BalanceMeter } from "@/components/fairness/balance-meter";
-import { ContributionChart } from "@/components/fairness/contribution-chart";
-import { TrendLine } from "@/components/fairness/trend-line";
 
-import type { Member } from "@/lib/supabase/types";
+// Lazy-load Recharts-based components — keeps recharts out of the initial bundle
+const ContributionChart = dynamic(
+  () => import("@/components/fairness/contribution-chart").then((m) => m.ContributionChart),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[250px] w-full rounded-xl" />,
+  }
+);
+
+const TrendLine = dynamic(
+  () => import("@/components/fairness/trend-line").then((m) => m.TrendLine),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[250px] w-full rounded-xl" />,
+  }
+);
+
+import type { Member, Assignment } from "@/lib/supabase/types";
+
+/** Assignment with joined chore name from Supabase */
+type AssignmentWithChore = Assignment & { chores: { id: string; name: string } | null };
 
 type PeriodKey =
   | "this_week"
@@ -97,7 +115,7 @@ export default function FairnessPage() {
       if (!householdId) return [];
       const { data } = await supabase
         .from("completions")
-        .select("*, assignments!inner(*, chores(*))")
+        .select("id, completed_by, points_earned, speed_bonus, completed_at, status, assignments!inner(id, household_id)")
         .eq("assignments.household_id", householdId)
         .gte("completed_at", dateRange.start.toISOString())
         .lte("completed_at", dateRange.end.toISOString())
@@ -115,7 +133,7 @@ export default function FairnessPage() {
       const eightWeeksAgo = subWeeks(new Date(), 8);
       const { data } = await supabase
         .from("completions")
-        .select("*, assignments!inner(*, chores(*))")
+        .select("id, completed_by, points_earned, speed_bonus, completed_at, status, assignments!inner(id, household_id)")
         .eq("assignments.household_id", householdId)
         .gte("completed_at", eightWeeksAgo.toISOString())
         .in("status", ["approved", "ai_approved"]);
@@ -124,20 +142,41 @@ export default function FairnessPage() {
     enabled: !!householdId,
   });
 
-  // Fetch assignments to determine "most avoided" and overdue streak
+  // Fetch assignments for "most avoided" and overdue streak (scoped to last 90 days)
+  const assignmentsCutoff = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return d.toISOString().split("T")[0];
+  }, []);
+
   const { data: assignments = [] } = useQuery({
-    queryKey: ["fairness-assignments", householdId],
+    queryKey: ["fairness-assignments", householdId, assignmentsCutoff],
     queryFn: async () => {
-      if (!householdId) return [];
-      const { data } = await supabase
-        .from("assignments")
-        .select("*, chores(*)")
-        .eq("household_id", householdId)
-        .order("due_date", { ascending: false })
-        .limit(500);
-      return data || [];
+      if (!householdId) return [] as AssignmentWithChore[];
+      const PAGE_SIZE = 200;
+      let allAssignments: AssignmentWithChore[] = [];
+      let page = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: pageData } = await supabase
+          .from("assignments")
+          .select("id, chore_id, assigned_to, due_date, status, chores(id, name)")
+          .eq("household_id", householdId)
+          .gte("due_date", assignmentsCutoff)
+          .order("due_date", { ascending: false })
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        const rows = (pageData || []) as unknown as AssignmentWithChore[];
+        allAssignments = [...allAssignments, ...rows];
+        hasMore = rows.length === PAGE_SIZE;
+        page++;
+      }
+
+      return allAssignments;
     },
     enabled: !!householdId,
+    staleTime: 2 * 60 * 1000, // 2 minutes — assignment data changes infrequently
   });
 
   // Build member points from completions
@@ -213,7 +252,7 @@ export default function FairnessPage() {
     const choreSkipCount: Record<string, { name: string; count: number }> = {};
     for (const a of assignments) {
       if (a.status === "overdue" || a.status === "skipped") {
-        const choreName = (a as any).chores?.name || "Unknown";
+        const choreName = (a as AssignmentWithChore).chores?.name || "Unknown";
         const choreId = a.chore_id;
         if (!choreSkipCount[choreId]) {
           choreSkipCount[choreId] = { name: choreName, count: 0 };

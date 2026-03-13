@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import { createClient } from "@/lib/supabase/server";
+import { env } from "@/lib/utils/env";
 
 export async function POST(request: Request) {
   try {
@@ -32,8 +33,8 @@ export async function POST(request: Request) {
     const verification = await verifyRegistrationResponse({
       response: body,
       expectedChallenge: challengeRow.challenge,
-      expectedOrigin: process.env.WEBAUTHN_ORIGIN!,
-      expectedRPID: process.env.WEBAUTHN_RP_ID!,
+      expectedOrigin: env.WEBAUTHN_ORIGIN,
+      expectedRPID: env.WEBAUTHN_RP_ID,
     });
 
     if (!verification.verified || !verification.registrationInfo) {
@@ -64,9 +65,7 @@ export async function POST(request: Request) {
       .eq("type", "registration");
 
     return NextResponse.json({ verified: true });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

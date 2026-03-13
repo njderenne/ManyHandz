@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     // 1. Get all active competitions that have ended
     const { data: competitions, error: fetchError } = await supabase
       .from("competitions")
-      .select("*")
+      .select("id, household_id, challenger_id, opponent_id, title, competition_type, target_value, chore_id, stakes_points, stakes_description, challenger_progress, opponent_progress, status, winner_id, starts_at, ends_at")
       .eq("status", "active")
       .lt("ends_at", nowISO);
 
@@ -111,54 +111,37 @@ export async function POST(request: Request) {
       }
 
       // 3. Transfer stakes points if there is a winner and loser
+      // NOTE: We use two separate award_bonus_points RPCs instead of a single
+      // transfer_points RPC because: (a) transfer_points would fail if the
+      // loser has insufficient points — competitions shouldn't prevent winners
+      // from receiving their reward; (b) award_bonus_points floors at 0 for
+      // deductions, which is the desired behavior for losers. Winner is
+      // credited first so partial failures favor the winner.
       if (winnerId && loserId && comp.stakes_points > 0) {
-        // Get current balances
-        const { data: winnerData } = await supabase
-          .from("members")
-          .select("points_balance, total_xp")
-          .eq("id", winnerId)
-          .single();
+        // Award bonus points to winner atomically
+        const { error: winnerError } = await supabase.rpc("award_bonus_points", {
+          p_member_id: winnerId,
+          p_bonus_points: comp.stakes_points,
+        });
 
-        const { data: loserData } = await supabase
-          .from("members")
-          .select("points_balance")
-          .eq("id", loserId)
-          .single();
-
-        if (winnerData && loserData) {
-          // Add stakes to winner
-          const { error: winnerError } = await supabase
-            .from("members")
-            .update({
-              points_balance: winnerData.points_balance + comp.stakes_points,
-              total_xp: winnerData.total_xp + comp.stakes_points,
-            })
-            .eq("id", winnerId);
-
-          if (winnerError) {
-            console.error(
-              `Failed to add stakes to winner ${winnerId}:`,
-              winnerError
-            );
-          }
-
-          // Deduct stakes from loser (floor at 0)
-          const newLoserBalance = Math.max(
-            0,
-            loserData.points_balance - comp.stakes_points
+        if (winnerError) {
+          console.error(
+            `Failed to add stakes to winner ${winnerId}:`,
+            winnerError
           );
+        }
 
-          const { error: loserError } = await supabase
-            .from("members")
-            .update({ points_balance: newLoserBalance })
-            .eq("id", loserId);
+        // Deduct stakes from loser atomically (floors at 0 in the RPC)
+        const { error: loserError } = await supabase.rpc("award_bonus_points", {
+          p_member_id: loserId,
+          p_bonus_points: -comp.stakes_points,
+        });
 
-          if (loserError) {
-            console.error(
-              `Failed to deduct stakes from loser ${loserId}:`,
-              loserError
-            );
-          }
+        if (loserError) {
+          console.error(
+            `Failed to deduct stakes from loser ${loserId}:`,
+            loserError
+          );
         }
       }
 

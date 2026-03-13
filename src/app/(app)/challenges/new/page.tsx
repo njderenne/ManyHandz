@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { addDays, format } from "date-fns";
@@ -125,8 +125,7 @@ export default function NewChallengePage() {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(createChallengeSchema) as any,
+    resolver: zodResolver(createChallengeSchema) as unknown as Resolver<FormValues>,
     defaultValues: {
       title: "",
       description: "",

@@ -18,11 +18,12 @@ export function useRewards() {
   // ---- Active rewards catalogue ----
   const { data: rewards = [], isLoading } = useQuery({
     queryKey: ["rewards", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase
         .from("rewards")
-        .select("*")
+        .select("id, household_id, name, description, icon, points_cost, is_active, created_by, created_at")
         .eq("household_id", householdId)
         .eq("is_active", true)
         .order("points_cost", { ascending: true });
@@ -35,6 +36,7 @@ export function useRewards() {
   // ---- Redemption history ----
   const { data: redemptions = [], isLoading: redemptionsLoading } = useQuery({
     queryKey: ["reward-redemptions", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase
@@ -127,38 +129,20 @@ export function useRewards() {
       memberId: string;
       pointsCost: number;
     }) => {
-      // Deduct points from the member first
-      const { data: member } = await supabase
-        .from("members")
-        .select("points_balance")
-        .eq("id", params.memberId)
-        .single();
-
-      if (!member) throw new Error("Member not found");
-      if (member.points_balance < params.pointsCost) {
-        throw new Error("Not enough points to redeem this reward");
+      // Atomic via Postgres RPC — prevents double-spend race conditions
+      const { error } = await supabase.rpc("redeem_reward", {
+        p_member_id: params.memberId,
+        p_reward_id: params.rewardId,
+        p_points_cost: params.pointsCost,
+      });
+      if (error) {
+        throw new Error(error.message.includes("Insufficient") ? "Not enough points to redeem this reward" : error.message);
       }
-
-      const { error: redeemError } = await supabase
-        .from("reward_redemptions")
-        .insert({
-          reward_id: params.rewardId,
-          member_id: params.memberId,
-          points_spent: params.pointsCost,
-          status: "pending" as RewardRedemptionStatus,
-        });
-      if (redeemError) throw redeemError;
-
-      // Deduct points
-      const { error: updateError } = await supabase
-        .from("members")
-        .update({ points_balance: member.points_balance - params.pointsCost })
-        .eq("id", params.memberId);
-      if (updateError) throw updateError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rewards"] });
       queryClient.invalidateQueries({ queryKey: ["reward-redemptions"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-redemptions"] });
       queryClient.invalidateQueries({ queryKey: ["members"] });
       toast.success("Reward redeemed!");
     },
@@ -185,6 +169,7 @@ export function useRewards() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reward-redemptions"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-redemptions"] });
       toast.success("Redemption approved!");
     },
     onError: (e) => toast.error("Failed to approve: " + e.message),
@@ -193,34 +178,22 @@ export function useRewards() {
   const rejectRedemption = useMutation({
     mutationFn: async ({
       redemptionId,
-      memberId,
-      pointsRefund,
     }: {
       redemptionId: string;
       memberId: string;
       pointsRefund: number;
+      approvedBy?: string;
     }) => {
-      const { error: rejectError } = await supabase
-        .from("reward_redemptions")
-        .update({ status: "rejected" as RewardRedemptionStatus })
-        .eq("id", redemptionId);
-      if (rejectError) throw rejectError;
-
-      // Refund points
-      const { data: member } = await supabase
-        .from("members")
-        .select("points_balance")
-        .eq("id", memberId)
-        .single();
-      if (member) {
-        await supabase
-          .from("members")
-          .update({ points_balance: member.points_balance + pointsRefund })
-          .eq("id", memberId);
-      }
+      // Atomic refund via Postgres RPC — prevents race conditions
+      const { error } = await supabase.rpc("refund_redemption", {
+        p_redemption_id: redemptionId,
+        p_approved_by: null,
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reward-redemptions"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-redemptions"] });
       queryClient.invalidateQueries({ queryKey: ["members"] });
       toast.success("Redemption rejected, points refunded.");
     },

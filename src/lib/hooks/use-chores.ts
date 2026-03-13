@@ -11,6 +11,7 @@ export function useChores() {
 
   const { data: chores = [], isLoading } = useQuery({
     queryKey: ["chores", householdId],
+    staleTime: 2 * 60 * 1000, // 2 minutes — chore library changes infrequently
     queryFn: async () => {
       if (!householdId) return [];
       const { data } = await supabase

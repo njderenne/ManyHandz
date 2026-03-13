@@ -19,6 +19,7 @@ export function useBundles() {
   // ---- Fetch all bundles with their chore items ----
   const { data: bundles = [], isLoading } = useQuery({
     queryKey: ["bundles", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase

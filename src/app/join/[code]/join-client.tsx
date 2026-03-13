@@ -55,7 +55,11 @@ export function JoinHouseholdClient({
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
 
   const modeConfig = household ? modeConfigs[household.mode] : null;
-  const showRolePicker = modeConfig && modeConfig.roles.length > 1;
+  // Joiners can only pick non-admin roles (exclude creatorRole like "parent" or "manager")
+  const joinerRoles = modeConfig
+    ? modeConfig.roles.filter((r) => r !== modeConfig.creatorRole)
+    : [];
+  const showRolePicker = joinerRoles.length > 1;
 
   const joinHousehold = useMutation({
     mutationFn: async () => {
@@ -240,7 +244,7 @@ export function JoinHouseholdClient({
             <div className="space-y-2">
               <p className="text-sm font-medium text-[var(--text-primary)]">I am a...</p>
               <div className="grid grid-cols-2 gap-3">
-                {modeConfig.roles.map((r) => {
+                {joinerRoles.map((r) => {
                   const isParentRole = r === modeConfig.creatorRole;
                   return (
                     <button

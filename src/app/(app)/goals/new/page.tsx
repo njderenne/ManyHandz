@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   ArrowLeft,
@@ -65,12 +66,12 @@ const AUTO_CONTRIBUTE_OPTIONS = [10, 25, 50, 75, 100];
 const goalSchema = z.object({
   title: z.string().min(1, "Title is required").max(100),
   description: z.string().max(500).optional(),
-  icon: z.string().default("target"),
+  icon: z.string(),
   target_points: z.number().min(1, "Must be at least 1 point"),
   monetary_value: z.number().min(0).optional(),
   member_id: z.string().min(1, "Please select a member"),
-  auto_contribute_enabled: z.boolean().default(false),
-  auto_contribute_percentage: z.number().min(0).max(100).default(10),
+  auto_contribute_enabled: z.boolean(),
+  auto_contribute_percentage: z.number().min(0).max(100),
 });
 
 type GoalFormData = z.infer<typeof goalSchema>;
@@ -94,6 +95,7 @@ export default function NewGoalPage() {
     watch,
     formState: { errors },
   } = useForm<GoalFormData>({
+    resolver: zodResolver(goalSchema),
     defaultValues: {
       title: "",
       description: "",
@@ -216,7 +218,7 @@ export default function NewGoalPage() {
               <Input
                 id="title"
                 placeholder="e.g., New Video Game"
-                {...register("title", { required: "Title is required" })}
+                {...register("title")}
               />
               {errors.title && (
                 <p className="text-xs text-destructive">{errors.title.message}</p>
@@ -268,10 +270,7 @@ export default function NewGoalPage() {
                 type="number"
                 min={1}
                 placeholder="100"
-                {...register("target_points", {
-                  valueAsNumber: true,
-                  min: { value: 1, message: "Must be at least 1" },
-                })}
+                {...register("target_points", { valueAsNumber: true })}
               />
               {errors.target_points && (
                 <p className="text-xs text-destructive">

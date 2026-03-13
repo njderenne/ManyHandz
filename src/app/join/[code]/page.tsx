@@ -18,7 +18,7 @@ export default async function JoinPage({ params }: JoinPageProps) {
   const { data: household } = await serviceClient
     .from("households")
     .select("id, name, mode, invite_code")
-    .ilike("invite_code", code)
+    .eq("invite_code", code.toUpperCase())
     .single();
 
   // Check if the user is authenticated

@@ -54,7 +54,13 @@ import { ChorePresetSelector } from "@/components/onboarding/chore-preset-select
 import { useChores } from "@/lib/hooks/use-chores";
 import { useAddPresetChores } from "@/lib/hooks/use-add-preset-chores";
 import { getLevelTitle, getLevelProgress, getXpForNextLevel } from "@/lib/constants/levels";
-import type { Assignment, Chore, Member } from "@/lib/supabase/types";
+import type { Assignment, Chore, Member, Household } from "@/lib/supabase/types";
+
+/** Member data with joined household from useHouseholdMode */
+type MemberWithHousehold = Member & { households: Household | null };
+
+/** Assignment with joined chore + member data from useAssignments */
+type AssignmentWithJoins = Assignment & { chores: Chore | null; members: Member | null };
 
 // ---------------------------------------------------------------------------
 // Activity Feed Reaction Emojis
@@ -510,7 +516,7 @@ export default function DashboardPage() {
   // Filter assignments for today — show only the current member's assignments
   const myTodayAssignments = useMemo(
     () =>
-      assignments.filter((a: any) => {
+      assignments.filter((a) => {
         const dueDate = a.due_date?.split("T")[0] ?? a.due_date;
         return dueDate === todayStr && a.assigned_to === memberId;
       }),
@@ -520,7 +526,7 @@ export default function DashboardPage() {
   // For task list display, parents see all today's tasks, kids see only their own
   const todayAssignments = useMemo(
     () =>
-      assignments.filter((a: any) => {
+      assignments.filter((a) => {
         const dueDate = a.due_date?.split("T")[0] ?? a.due_date;
         return dueDate === todayStr;
       }),
@@ -529,7 +535,7 @@ export default function DashboardPage() {
 
   const overdueAssignments = useMemo(
     () =>
-      assignments.filter((a: any) => {
+      assignments.filter((a) => {
         if (a.status === "completed" || a.status === "skipped") return false;
         const dueDate = a.due_date?.split("T")[0] ?? a.due_date;
         return dueDate < todayStr && a.assigned_to === memberId;
@@ -539,7 +545,7 @@ export default function DashboardPage() {
 
   // Stats always show the current member's counts
   const completedTodayCount = useMemo(
-    () => myTodayAssignments.filter((a: any) => a.status === "completed").length,
+    () => myTodayAssignments.filter((a) => a.status === "completed").length,
     [myTodayAssignments]
   );
 
@@ -570,9 +576,9 @@ export default function DashboardPage() {
 
   const handleStart = useCallback(
     (assignmentId: string) => {
-      const assignment = assignments.find((a: any) => a.id === assignmentId);
+      const assignment = assignments.find((a) => a.id === assignmentId);
       if (!assignment) return;
-      const chore = (assignment as any).chores;
+      const chore = (assignment as AssignmentWithJoins).chores;
       startTimer({
         assignmentId,
         choreId: chore?.id ?? "",
@@ -587,9 +593,9 @@ export default function DashboardPage() {
 
   const handleComplete = useCallback(
     (assignmentId: string) => {
-      const assignment = assignments.find((a: any) => a.id === assignmentId);
+      const assignment = assignments.find((a) => a.id === assignmentId);
       if (!assignment) return;
-      setSelectedAssignment(assignment as any);
+      setSelectedAssignment(assignment as AssignmentWithJoins);
       setCompletionModalOpen(true);
     },
     [assignments]
@@ -606,7 +612,7 @@ export default function DashboardPage() {
       speedBonus: number;
     }) => {
       const chore = selectedAssignment?.chores;
-      const household = (memberData as any)?.households;
+      const household = (memberData as MemberWithHousehold | null | undefined)?.households;
 
       completeAssignment.mutate(
         {

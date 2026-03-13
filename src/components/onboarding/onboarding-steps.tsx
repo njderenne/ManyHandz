@@ -240,7 +240,6 @@ export function OnboardingSteps() {
     onSuccess: () => {
       goToStep(4);
       queryClient.invalidateQueries({ queryKey: ["members"] });
-      queryClient.invalidateQueries({ queryKey: ["current-member"] });
     },
   });
 

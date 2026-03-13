@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ChoreForm } from "@/components/chores/chore-form";
 import { useChores } from "@/lib/hooks/use-chores";
 import { useHouseholdMode } from "@/lib/hooks/use-household-mode";
+import type { Chore } from "@/lib/supabase/types";
 
 export default function NewChorePage() {
   const router = useRouter();
@@ -107,7 +108,7 @@ export default function NewChorePage() {
 
       {/* Form */}
       <ChoreForm
-        chore={templateChore as any}
+        chore={templateChore as Chore | null}
         onSubmit={handleSubmit}
         onCancel={() => router.back()}
         isSubmitting={createChore.isPending}

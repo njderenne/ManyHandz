@@ -2,6 +2,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useHouseholdStore } from "@/lib/stores/household-store";
+import type { ActivityFeedItem, ActivityReactions, Member } from "@/lib/supabase/types";
+
+/** Activity feed item with joined member data */
+type ActivityWithMember = ActivityFeedItem & { members: Member | null };
 
 export function useActivityFeed(limit = 20) {
   const supabase = createClient();
@@ -25,9 +29,9 @@ export function useActivityFeed(limit = 20) {
 
   const addReaction = useMutation({
     mutationFn: async ({ activityId, emoji, memberId }: { activityId: string; emoji: string; memberId: string }) => {
-      const activity = activities.find((a: any) => a.id === activityId);
+      const activity = activities.find((a) => a.id === activityId);
       if (!activity) return;
-      const reactions = (activity as any).reactions || {};
+      const reactions: ActivityReactions = (activity as ActivityWithMember).reactions || {};
       const emojiReactions: string[] = reactions[emoji] || [];
       const updated = emojiReactions.includes(memberId)
         ? emojiReactions.filter((id: string) => id !== memberId)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateRegistrationOptions } from "@simplewebauthn/server";
 import { createClient } from "@/lib/supabase/server";
+import { env } from "@/lib/utils/env";
 
 export async function POST() {
   try {
@@ -18,8 +19,8 @@ export async function POST() {
       .eq("user_id", user.id);
 
     const options = await generateRegistrationOptions({
-      rpName: process.env.WEBAUTHN_RP_NAME!,
-      rpID: process.env.WEBAUTHN_RP_ID!,
+      rpName: env.WEBAUTHN_RP_NAME,
+      rpID: env.WEBAUTHN_RP_ID,
       userName: user.email!,
       userID: new TextEncoder().encode(user.id),
       attestationType: "none",
@@ -41,9 +42,7 @@ export async function POST() {
     });
 
     return NextResponse.json(options);
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

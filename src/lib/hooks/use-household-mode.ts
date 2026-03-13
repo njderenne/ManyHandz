@@ -4,34 +4,36 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useHouseholdStore } from "@/lib/stores/household-store";
 import { createClient } from "@/lib/supabase/client";
-import { modeConfigs, type ModeConfig, type ModePermissions, type ModeFeatures, type ModeUI, type NavTab } from "@/lib/constants/modes";
+import { useMembers } from "./use-members";
+import { modeConfigs } from "@/lib/constants/modes";
+import type { HouseholdMode } from "@/lib/supabase/types";
 
 export function useHouseholdMode() {
   const activeHouseholdId = useHouseholdStore((s) => s.activeHouseholdId);
+  const { currentMember } = useMembers();
 
-  const { data: memberData } = useQuery({
-    queryKey: ["member-context", activeHouseholdId],
+  // Fetch only the household mode — lightweight query instead of
+  // fetching the full member + household join (eliminates the redundant
+  // ["member-context"] query that duplicated member data from useMembers)
+  const { data: householdMode } = useQuery({
+    queryKey: ["household-mode", activeHouseholdId],
+    staleTime: 5 * 60 * 1000, // household mode rarely changes
     queryFn: async () => {
       if (!activeHouseholdId) return null;
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data: member } = await supabase
-        .from("members")
-        .select("*, households(*)")
-        .eq("household_id", activeHouseholdId)
-        .eq("user_id", user.id)
-        .eq("is_active", true)
+      const { data } = await supabase
+        .from("households")
+        .select("mode")
+        .eq("id", activeHouseholdId)
         .single();
-      return member;
+      return (data?.mode as HouseholdMode) || "family";
     },
     enabled: !!activeHouseholdId,
   });
 
   return useMemo(() => {
-    const mode = (memberData?.households as any)?.mode || "family";
-    const role = memberData?.role || "roommate";
+    const mode: HouseholdMode = householdMode || "family";
+    const role = currentMember?.role || "roommate";
     const config = modeConfigs[mode] || modeConfigs.family;
     const permissions = config.permissions[role] || config.permissions[config.creatorRole];
     const features = config.features;
@@ -46,9 +48,9 @@ export function useHouseholdMode() {
       features,
       ui,
       navTabs,
-      memberId: memberData?.id || null,
-      memberData,
+      memberId: currentMember?.id || null,
+      memberData: currentMember,
       isAdmin: permissions?.canEditHouseholdSettings ?? false,
     };
-  }, [memberData]);
+  }, [householdMode, currentMember]);
 }

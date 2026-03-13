@@ -1,13 +1,25 @@
 // ============================================================================
 // ManyHandz — Cron: Check Overdue Assignments
 // Hourly: finds all pending/in_progress assignments past their due date,
-// marks them overdue, resets member streaks, creates activity feed entries,
-// and sends push notifications to affected members.
+// marks them overdue, and sends push notifications to affected members.
+//
+// NOTE: Streak resets and activity feed entries are handled by the
+// handle_assignment_overdue() database trigger (fires per-row on status
+// change to 'overdue'). This cron only handles the batch status update
+// and push notifications (which cannot be sent from a Postgres trigger).
 // ============================================================================
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendPushToUser } from "@/lib/utils/push";
+
+/** Extract chore name from Supabase join result (may be object or array) */
+function getChoreName(row: Record<string, unknown>, fallback = "Unknown chore"): string {
+  const chores = row.chores;
+  if (!chores) return fallback;
+  if (Array.isArray(chores)) return (chores[0] as { name?: string })?.name || fallback;
+  return (chores as { name?: string }).name || fallback;
+}
 
 export async function POST(request: Request) {
   // Double-check cron secret
@@ -52,50 +64,17 @@ export async function POST(request: Request) {
 
     if (updateError) throw updateError;
 
-    // 3. Reset current_streak to 0 for all affected members
+    // NOTE: Steps 3 & 4 (streak reset + activity feed) are now handled by
+    // the handle_assignment_overdue() database trigger, which fires per-row
+    // when status transitions to 'overdue'. Doing them here as well caused
+    // duplicate activity entries and redundant streak resets.
+
+    // 3. Send push notifications to overdue members
+    // (Push cannot be sent from a Postgres trigger, so it stays here)
     const uniqueMemberIds = [
       ...new Set(overdueAssignments.map((a) => a.assigned_to)),
     ];
 
-    for (const memberId of uniqueMemberIds) {
-      const { error: streakError } = await supabase
-        .from("members")
-        .update({ current_streak: 0 })
-        .eq("id", memberId);
-
-      if (streakError) {
-        console.error(
-          `Failed to reset streak for member ${memberId}:`,
-          streakError
-        );
-      }
-    }
-
-    // 4. Create activity feed entries for each overdue assignment
-    const activityEntries = overdueAssignments.map((a) => ({
-      household_id: a.household_id,
-      member_id: a.assigned_to,
-      action_type: "chore_assigned" as const,
-      metadata: {
-        event: "overdue",
-        assignment_id: a.id,
-        chore_id: a.chore_id,
-        chore_name: (a.chores as any)?.name || "Unknown chore",
-        due_date: a.due_date,
-      },
-      reactions: {},
-    }));
-
-    const { error: activityError } = await supabase
-      .from("activity_feed")
-      .insert(activityEntries);
-
-    if (activityError) {
-      console.error("Failed to create activity feed entries:", activityError);
-    }
-
-    // 5. Send push notifications to overdue members
-    // Collect member user_ids for push notifications
     const { data: members } = await supabase
       .from("members")
       .select("id, user_id, display_name")
@@ -109,7 +88,7 @@ export async function POST(request: Request) {
       const member = memberMap.get(assignment.assigned_to);
       if (!member?.user_id) continue;
 
-      const choreName = (assignment.chores as any)?.name || "a chore";
+      const choreName = getChoreName(assignment as Record<string, unknown>, "a chore");
 
       try {
         await sendPushToUser(member.user_id, {

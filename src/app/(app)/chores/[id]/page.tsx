@@ -111,7 +111,7 @@ export default function ChoreDetailPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("rotation_groups")
-        .select("*")
+        .select("id, household_id, chore_id, member_order, current_index, rotation_type, frequency, start_date, is_active, created_at")
         .eq("chore_id", choreId)
         .eq("is_active", true)
         .maybeSingle();

@@ -23,6 +23,7 @@ export function useCustomBadges() {
   // ---- Fetch all custom badges with their awards ----
   const { data: badges = [], isLoading } = useQuery({
     queryKey: ["custom-badges", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase

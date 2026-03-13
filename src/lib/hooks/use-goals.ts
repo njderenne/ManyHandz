@@ -9,6 +9,7 @@ import type {
   GoalContributionSource,
   GoalStatus,
 } from "@/lib/supabase/types";
+// Note: GoalContributionSource kept for contributeToGoal param type compatibility
 
 export type GoalWithRelations = Goal & {
   members: Record<string, unknown>;
@@ -22,6 +23,7 @@ export function useGoals() {
 
   const { data: goals = [], isLoading } = useQuery({
     queryKey: ["goals", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase
@@ -114,40 +116,20 @@ export function useGoals() {
       source: GoalContributionSource;
       sourceId?: string;
     }) => {
-      const { error: contribError } = await supabase
-        .from("goal_contributions")
-        .insert({
-          goal_id: params.goalId,
-          member_id: params.memberId,
-          points: params.points,
-          source: params.source,
-          source_id: params.sourceId || null,
-        });
-      if (contribError) throw contribError;
-
-      // Update current_points on the goal
-      const { data: goal } = await supabase
-        .from("goals")
-        .select("current_points, target_points")
-        .eq("id", params.goalId)
-        .single();
-
-      if (goal) {
-        const newPoints = (goal.current_points || 0) + params.points;
-        const isCompleted = newPoints >= goal.target_points;
-        await supabase
-          .from("goals")
-          .update({
-            current_points: newPoints,
-            ...(isCompleted
-              ? {
-                  status: "completed" as GoalStatus,
-                  completed_at: new Date().toISOString(),
-                }
-              : {}),
-          })
-          .eq("id", params.goalId);
+      // Atomic via Postgres RPC — prevents race conditions on concurrent contributions
+      const { data, error } = await supabase.rpc("contribute_to_goal", {
+        p_member_id: params.memberId,
+        p_goal_id: params.goalId,
+        p_points: params.points,
+      });
+      if (error) {
+        throw new Error(
+          error.message.includes("Insufficient")
+            ? "Not enough points to contribute"
+            : error.message
+        );
       }
+      return data as { new_total: number; is_complete: boolean };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["goals"] });

@@ -54,9 +54,7 @@ export async function POST(
     if (error) throw error;
 
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

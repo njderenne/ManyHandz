@@ -3,7 +3,7 @@ import type { Household } from "../types";
 
 export async function getHousehold(id: string): Promise<Household | null> {
   const supabase = createClient();
-  const { data } = await supabase.from("households").select("*").eq("id", id).single();
+  const { data } = await supabase.from("households").select("id, name, mode, invite_code, timezone, require_photo_proof, require_approval, leaderboard_visible, allow_kid_gifting, allow_kid_challenges, allow_kid_competitions, max_kid_competition_stakes, ai_verification_enabled, ai_verification_provider, ai_auto_approve_threshold, ai_auto_reject_threshold, ai_monthly_cost_cap_cents, health_score, health_score_updated_at, created_by, created_at, updated_at").eq("id", id).single();
   return data as Household | null;
 }
 

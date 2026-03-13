@@ -9,11 +9,12 @@ export function useSubscription() {
 
   const { data: subscription, isLoading } = useQuery({
     queryKey: ["subscription", householdId],
+    staleTime: 5 * 60 * 1000, // 5 minutes — only changes on billing events
     queryFn: async () => {
       if (!householdId) return null;
       const { data } = await supabase
         .from("subscriptions")
-        .select("*")
+        .select("id, status, trial_end, current_period_end, stripe_subscription_id, price_id, cancel_at_period_end")
         .eq("household_id", householdId)
         .single();
       return data;

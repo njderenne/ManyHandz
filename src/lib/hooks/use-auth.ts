@@ -10,6 +10,7 @@ export function useAuth() {
 
   const { data: user, isLoading } = useQuery({
     queryKey: ["auth-user"],
+    staleTime: 5 * 60 * 1000, // 5 min — auth state rarely changes mid-session
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       return user;
@@ -18,9 +19,10 @@ export function useAuth() {
 
   const { data: profile } = useQuery({
     queryKey: ["profile", user?.id],
+    staleTime: 5 * 60 * 1000, // 5 min
     queryFn: async () => {
       if (!user) return null;
-      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      const { data } = await supabase.from("profiles").select("id, email, full_name, display_name, avatar_url, stripe_customer_id, referral_code, referred_by, timezone").eq("id", user.id).single();
       return data;
     },
     enabled: !!user,

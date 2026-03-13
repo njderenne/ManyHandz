@@ -31,6 +31,7 @@ export function useCompetitions() {
 
   const { data: competitions = [], isLoading } = useQuery({
     queryKey: ["competitions", householdId],
+    staleTime: 2 * 60 * 1000, // 2 min
     queryFn: async () => {
       if (!householdId) return [];
       const { data } = await supabase

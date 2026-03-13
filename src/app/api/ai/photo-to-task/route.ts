@@ -7,6 +7,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { verifyHouseholdMembership } from "@/lib/utils/auth-checks";
+import { rateLimitAI, rateLimitResponse } from "@/lib/utils/rate-limit";
 import OpenAI from "openai";
 
 interface PhotoToTaskRequest {
@@ -114,12 +116,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const rl = rateLimitAI(user.id);
+    if (!rl.success) return rateLimitResponse(rl.retryAfterMs);
+
     const body = (await request.json()) as PhotoToTaskRequest;
     const { imageBase64, mode, householdId } = body;
 
     if (!imageBase64 || !mode) {
       return NextResponse.json(
         { error: "imageBase64 and mode required" },
+        { status: 400 }
+      );
+    }
+
+    // Limit base64 payload size to prevent memory exhaustion (10MB max)
+    const MAX_BASE64_LENGTH = 10 * 1024 * 1024 * 1.37; // ~10MB accounting for base64 overhead
+    if (imageBase64.length > MAX_BASE64_LENGTH) {
+      return NextResponse.json(
+        { error: "Image too large (max 10MB)" },
         { status: 400 }
       );
     }
@@ -131,8 +145,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check monthly cost cap if householdId provided
+    // Verify household membership and check cost cap if householdId provided
     if (householdId) {
+      // Verify user is an active member of this household
+      const member = await verifyHouseholdMembership(supabase, user.id, householdId);
+      if (!member) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
       const serviceClient = createServiceClient();
       const { data: household } = await serviceClient
         .from("households")
@@ -147,7 +167,8 @@ export async function POST(request: Request) {
 
         const { data: monthlyVerifications } = await serviceClient
           .from("ai_verifications")
-          .select("cost_cents")
+          .select("cost_cents, completions!inner(assignments!inner(household_id))")
+          .eq("completions.assignments.household_id", householdId)
           .gte("created_at", startOfMonth.toISOString());
 
         const totalCostCents = (monthlyVerifications ?? []).reduce(
@@ -198,10 +219,9 @@ export async function POST(request: Request) {
     const result: PhotoTaskResult = { mode, data: parsed } as PhotoTaskResult;
 
     return NextResponse.json({ success: true, result });
-  } catch (error: any) {
-    console.error("AI photo-to-task error:", error);
+  } catch {
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

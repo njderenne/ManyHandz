@@ -74,7 +74,6 @@ export function useVacationMode() {
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["members"] });
-      queryClient.invalidateQueries({ queryKey: ["current-member"] });
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
       const msg = vars.reassignChores
         ? "Vacation mode enabled and chores reassigned!"
@@ -95,7 +94,6 @@ export function useVacationMode() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members"] });
-      queryClient.invalidateQueries({ queryKey: ["current-member"] });
       toast.success("Welcome back! Vacation mode disabled.");
     },
     onError: (e) => toast.error("Failed to disable vacation mode: " + e.message),
@@ -112,7 +110,6 @@ export function useVacationMode() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["members"] });
-      queryClient.invalidateQueries({ queryKey: ["current-member"] });
       toast.success("Vacation extended!");
     },
     onError: (e) => toast.error("Failed to extend vacation: " + e.message),

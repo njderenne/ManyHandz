@@ -96,12 +96,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // For authenticated app routes, check subscription status
-  if (user && pathname.startsWith("/") && !isPublic && !isAlwaysAllowed) {
-    // The subscription check is primarily enforced at DB level via RLS
-    // This header is for UX layer only
-    response.headers.set("x-subscription-status", "active");
-  }
+  // Subscription enforcement is handled at the DB level via RLS policies.
+  // No client-side header needed — the billing page and hooks query status directly.
 
   return addSecurityHeaders(response);
 }

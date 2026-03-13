@@ -1,19 +1,72 @@
 "use client";
 
 import { useMemo } from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Trophy, Users } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { Trophy, Users, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+
+// Lazy-load Recharts (~200-400KB) — only needed when PollResults renders
+const RechartsComponents = dynamic(
+  () =>
+    import("recharts").then((mod) => ({
+      default: ({
+        chartData,
+        BAR_COLORS,
+      }: {
+        chartData: { name: string; fullName: string; votes: number; optionId: string; voters: string[] }[];
+        BAR_COLORS: string[];
+      }) => (
+        <mod.ResponsiveContainer width="100%" height="100%">
+          <mod.BarChart
+            data={chartData}
+            layout="vertical"
+            margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+          >
+            <mod.CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <mod.XAxis type="number" allowDecimals={false} stroke="hsl(var(--muted-foreground))" fontSize={12} />
+            <mod.YAxis
+              type="category"
+              dataKey="name"
+              width={100}
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={12}
+            />
+            <mod.Tooltip
+              contentStyle={{
+                backgroundColor: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: "8px",
+                fontSize: "12px",
+              }}
+              formatter={(value) => [`${value} votes`, "Votes"]}
+              labelFormatter={(label) => {
+                const labelStr = String(label);
+                const item = chartData.find((d) => d.name === labelStr);
+                return item?.fullName ?? labelStr;
+              }}
+            />
+            <mod.Bar dataKey="votes" radius={[0, 4, 4, 0]} maxBarSize={32}>
+              {chartData.map((_, index) => (
+                <mod.Cell
+                  key={index}
+                  fill={BAR_COLORS[index % BAR_COLORS.length]}
+                />
+              ))}
+            </mod.Bar>
+          </mod.BarChart>
+        </mod.ResponsiveContainer>
+      ),
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  }
+);
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -92,47 +145,9 @@ export function PollResults({ poll, members = [], className }: PollResultsProps)
           </motion.div>
         )}
 
-        {/* Bar chart */}
+        {/* Bar chart (lazy-loaded) */}
         <div className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={chartData}
-              layout="vertical"
-              margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis type="number" allowDecimals={false} stroke="hsl(var(--muted-foreground))" fontSize={12} />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={100}
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-                formatter={(value) => [`${value} votes`, "Votes"]}
-                labelFormatter={(label) => {
-                  const labelStr = String(label);
-                  const item = chartData.find((d) => d.name === labelStr);
-                  return item?.fullName ?? labelStr;
-                }}
-              />
-              <Bar dataKey="votes" radius={[0, 4, 4, 0]} maxBarSize={32}>
-                {chartData.map((_, index) => (
-                  <Cell
-                    key={index}
-                    fill={BAR_COLORS[index % BAR_COLORS.length]}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <RechartsComponents chartData={chartData} BAR_COLORS={BAR_COLORS} />
         </div>
 
         {/* Voter avatars per option (if not anonymous) */}

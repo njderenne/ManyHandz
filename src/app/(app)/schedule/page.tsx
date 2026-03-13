@@ -49,7 +49,21 @@ import { CalendarView } from "@/components/schedule/calendar-view";
 import { CreateScheduleDialog } from "@/components/schedule/create-schedule-dialog";
 import { SchedulesList } from "@/components/schedule/schedules-list";
 import type { ScheduleAssignment } from "@/components/schedule/day-column";
-import type { Member } from "@/lib/supabase/types";
+import type { Member, Assignment, Chore, ChoreCategory } from "@/lib/supabase/types";
+
+/** Raw assignment row returned by the schedule query with joined chore + category + member data */
+type RawScheduleAssignment = Assignment & {
+  chores: (Chore & { chore_categories: ChoreCategory | null }) | null;
+  members: Member | null;
+};
+
+/** Schedule assignment extended with display fields */
+type ExtendedScheduleAssignment = ScheduleAssignment & {
+  dueDate: string;
+  rotationGroupId: string | null;
+  assignedTo: string | null;
+  chorePoints: number;
+};
 
 export default function SchedulePage() {
   const householdId = useHouseholdStore((s) => s.activeHouseholdId);
@@ -168,7 +182,7 @@ export default function SchedulePage() {
   // Transform raw assignments to ScheduleAssignment format + apply filters
   const scheduleAssignments = useMemo(() => {
     return rawAssignments
-      .filter((a: any) => {
+      .filter((a: RawScheduleAssignment) => {
         if (filterMember !== "all" && a.assigned_to !== filterMember)
           return false;
         if (filterStatus !== "all" && a.status !== filterStatus) return false;
@@ -180,13 +194,8 @@ export default function SchedulePage() {
       })
       .map(
         (
-          a: any
-        ): ScheduleAssignment & {
-          dueDate: string;
-          rotationGroupId: string | null;
-          assignedTo: string | null;
-          chorePoints: number;
-        } => {
+          a: RawScheduleAssignment
+        ): ExtendedScheduleAssignment => {
           const member = memberMap[a.assigned_to];
           return {
             id: a.id,
@@ -210,7 +219,7 @@ export default function SchedulePage() {
   const assignmentDates = useMemo(() => {
     const grouped: Record<string, ScheduleAssignment[]> = {};
     for (const a of scheduleAssignments) {
-      const key = (a as any).dueDate;
+      const key = a.dueDate;
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(a);
     }
@@ -226,9 +235,9 @@ export default function SchedulePage() {
 
   // Raw assignment lookup for extra details (difficulty, time est)
   const rawAssignmentMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    for (const a of rawAssignments) {
-      map[(a as any).id] = a;
+    const map: Record<string, RawScheduleAssignment> = {};
+    for (const a of rawAssignments as RawScheduleAssignment[]) {
+      map[a.id] = a;
     }
     return map;
   }, [rawAssignments]);
@@ -237,7 +246,7 @@ export default function SchedulePage() {
   const categories = useMemo(() => {
     const catSet = new Set<string>();
     for (const a of rawAssignments) {
-      const catName = (a as any).chores?.chore_categories?.name;
+      const catName = (a as RawScheduleAssignment).chores?.chore_categories?.name;
       if (catName) catSet.add(catName);
     }
     return Array.from(catSet).sort();
@@ -546,8 +555,8 @@ export default function SchedulePage() {
                                   updateAssignment.mutate({
                                     id: assignment.id,
                                     status: "completed",
-                                    assignedTo: (assignment as any).assignedTo,
-                                    chorePoints: (assignment as any).chorePoints,
+                                    assignedTo: (assignment as ExtendedScheduleAssignment).assignedTo ?? undefined,
+                                    chorePoints: (assignment as ExtendedScheduleAssignment).chorePoints ?? undefined,
                                   })
                                 }
                                 disabled={updateAssignment.isPending}

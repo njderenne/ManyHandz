@@ -1,7 +1,11 @@
+import { env } from "@/lib/utils/env";
+
 export const STRIPE_CONFIG = {
-  prices: {
-    monthly: process.env.STRIPE_PRICE_ID_MONTHLY!,
-    annual: process.env.STRIPE_PRICE_ID_ANNUAL!,
+  get prices() {
+    return {
+      monthly: env.STRIPE_PRICE_ID_MONTHLY,
+      annual: env.STRIPE_PRICE_ID_ANNUAL,
+    };
   },
   monthlyPrice: 999, // $9.99 in cents
   annualPrice: 9999, // $99.99 in cents

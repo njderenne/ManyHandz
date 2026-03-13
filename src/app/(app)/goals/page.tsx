@@ -43,7 +43,7 @@ export default function GoalsPage() {
       if (!householdId) return [];
       const { data } = await supabase
         .from("goals")
-        .select("*")
+        .select("id, household_id, member_id, title, description, icon, target_points, current_points, monetary_value, auto_contribute_enabled, auto_contribute_percentage, status, completed_at, approved_by, approved_at, created_by, created_at, updated_at")
         .eq("household_id", householdId)
         .order("created_at", { ascending: false });
       return (data || []) as Goal[];
@@ -111,7 +111,7 @@ export default function GoalsPage() {
     },
   });
 
-  // Contribute points to a goal
+  // Contribute points to a goal (atomic via Postgres RPC — prevents race conditions)
   const contributeMutation = useMutation({
     mutationFn: async ({
       goalId,
@@ -121,52 +121,20 @@ export default function GoalsPage() {
       points: number;
     }) => {
       if (!currentMember) throw new Error("Not logged in");
-      if (currentMember.points_balance < points) {
-        throw new Error("Not enough points");
+
+      const { error } = await supabase.rpc("contribute_to_goal", {
+        p_member_id: currentMember.id,
+        p_goal_id: goalId,
+        p_points: points,
+      });
+      if (error) {
+        throw new Error(error.message.includes("Insufficient") ? "Not enough points" : error.message);
       }
-
-      // Insert contribution
-      const { error: contribError } = await supabase
-        .from("goal_contributions")
-        .insert({
-          goal_id: goalId,
-          member_id: currentMember.id,
-          points,
-          source: "manual" as const,
-        });
-      if (contribError) throw contribError;
-
-      // Update goal current_points
-      const goal = goals.find((g) => g.id === goalId);
-      if (!goal) throw new Error("Goal not found");
-      const newPoints = goal.current_points + points;
-      const isNowComplete = newPoints >= goal.target_points;
-
-      const { error: goalError } = await supabase
-        .from("goals")
-        .update({
-          current_points: newPoints,
-          ...(isNowComplete
-            ? { status: "completed" as const, completed_at: new Date().toISOString() }
-            : {}),
-        })
-        .eq("id", goalId);
-      if (goalError) throw goalError;
-
-      // Deduct points from member
-      const { error: memberError } = await supabase
-        .from("members")
-        .update({
-          points_balance: currentMember.points_balance - points,
-        })
-        .eq("id", currentMember.id);
-      if (memberError) throw memberError;
     },
     onSuccess: () => {
       toast.success("Points contributed!");
       queryClient.invalidateQueries({ queryKey: ["goals"] });
       queryClient.invalidateQueries({ queryKey: ["members"] });
-      queryClient.invalidateQueries({ queryKey: ["current-member"] });
     },
     onError: (err) => {
       toast.error(err.message);
