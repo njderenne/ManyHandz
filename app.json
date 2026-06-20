@@ -1,36 +1,26 @@
 {
   "expo": {
-    "name": "App Template",
-    "slug": "app-template",
-    "scheme": "apptemplate",
+    "name": "ManyHandz",
+    "slug": "manyhandz",
+    "scheme": "manyhandz",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gearup2go.apptemplate",
+      "bundleIdentifier": "com.criterial.manyhandz",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSMicrophoneUsageDescription": "Record voice notes to add to your entries."
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.gearup2go.apptemplate",
+      "package": "com.criterial.manyhandz",
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
-      "config": {
-        "googleMaps": {}
-      },
       "permissions": [
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR"
       ],
@@ -49,38 +39,31 @@
       "expo-router",
       "expo-secure-store",
       [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "$(PRODUCT_NAME) uses your location to show nearby activity and routes."
-        }
-      ],
-      [
         "expo-image-picker",
         {
-          "photosPermission": "$(PRODUCT_NAME) accesses your photos so you can set images.",
-          "cameraPermission": "$(PRODUCT_NAME) uses the camera to take photos."
+          "photosPermission": "$(PRODUCT_NAME) accesses your photos so you can attach chore proof and avatars.",
+          "cameraPermission": "$(PRODUCT_NAME) uses the camera to take before/after chore photos."
         }
       ],
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "$(PRODUCT_NAME) uses Face ID to unlock the app."
+          "faceIDPermission": "$(PRODUCT_NAME) uses Face ID to lock the app and protect kid accounts."
         }
       ],
       [
         "expo-notifications",
         {
           "icon": "./assets/images/notification-icon.png",
-          "color": "#6366f1"
+          "color": "#FF6B4A"
         }
       ],
       "expo-font",
       "expo-web-browser",
-      "expo-audio",
       [
         "expo-calendar",
         {
-          "calendarPermission": "$(PRODUCT_NAME) adds events to your calendar."
+          "calendarPermission": "$(PRODUCT_NAME) adds chore schedules to your calendar."
         }
       ],
       [
@@ -97,16 +80,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "6f25b898-333e-419c-bfe2-a9b1a69676c0"
-      }
+      "router": {}
     },
-    "owner": "wlarson",
     "runtimeVersion": "1.1.0",
-    "updates": {
-      "url": "https://u.expo.dev/6f25b898-333e-419c-bfe2-a9b1a69676c0"
-    },
     "icon": "./assets/images/icon.png"
   }
 }

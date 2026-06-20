@@ -52,7 +52,7 @@ app.onError((err, c) => {
   return c.json({ error: 'internal error' }, 500)
 })
 
-app.get('/api/health', (c) => c.json({ ok: true, service: 'app-template', version: VERSION, ts: Date.now() }))
+app.get('/api/health', (c) => c.json({ ok: true, service: 'manyhandz', version: VERSION, ts: Date.now() }))
 
 // Version metadata for the client force-update gate: the app compares its own version against
 // minAppVersion (a plain Worker var, set per deploy) and blocks usage until the store update

@@ -89,7 +89,7 @@ export function createAuth(env: Env) {
     ],
     trustedOrigins: [
       env.BETTER_AUTH_URL,
-      'apptemplate://', // native OAuth deep-link scheme — must match app.json `scheme`
+      'manyhandz://', // native OAuth deep-link scheme — must match app.json `scheme`
       'http://localhost:8081', // Expo web dev server
     ],
   })

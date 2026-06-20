@@ -3,11 +3,11 @@
  * The factory rewrites these fields per app; everything else reads from here.
  */
 export const APP_CONFIG = {
-  name: 'App Template',
-  shortName: 'Template',
+  name: 'ManyHandz',
+  shortName: 'ManyHandz',
   description:
-    'The AppFactory canonical chassis — Expo (React Native) native-first, Cloudflare Workers, Neon + Drizzle, Better-Auth.',
-  url: 'https://example.com',
+    'One chore app for families and roommates — assign and auto-rotate chores, score fairness, photo-verify completion, and gamify it for kids. Many hands make light work.',
+  url: 'https://manyhandz.io',
   /**
    * Fleet standard: one monitored studio inbox serves every minted app (display-name carries the
    * per-app identity — see worker/email/mailer.ts). Do NOT create per-app support mailboxes.
@@ -19,16 +19,16 @@ export const APP_CONFIG = {
   features: {
     ai: true,
     passkeys: true,
-    peerPayments: false,
+    peerPayments: true, // Settle-Up: payment handles (Venmo/PayPal/Cash App) for money IOUs
     realtime: false,
     haptics: true,
-    push: false,
+    push: true,
     gps: false,
-    camera: false,
-    biometrics: false,
-    maps: true, // Android needs GOOGLE_MAPS_API_KEY baked into the build (EAS env var — set)
-    qr: false,
-    voice: false, // mic voice-notes → speech-to-text (expo-audio; needs an EAS dev build + /api/voice/stt configured)
+    camera: true,
+    biometrics: true, // app-lock (Face ID + PIN) for kid accounts / parent-only areas
+    maps: false,
+    qr: true, // QR household-join invites
+    voice: false,
   },
   /**
    * Social auth providers — gate the "Continue with Google/Apple" buttons on the login screen.
@@ -95,8 +95,8 @@ export const APP_CONFIG = {
   },
   /** Display alias for the tenant primitive (e.g. "Household", "Team", "Care Circle"). */
   tenant: {
-    singular: 'Organization',
-    plural: 'Organizations',
+    singular: 'Household',
+    plural: 'Households',
   },
   /**
    * Legal config — interpolated into /terms and /privacy. Fleet standard: the studio (Criterial)

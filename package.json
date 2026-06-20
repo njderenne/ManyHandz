@@ -1,10 +1,10 @@
 {
-  "name": "app-template",
+  "name": "manyhandz",
   "private": true,
   "version": "0.2.0",
   "main": "expo-router/entry",
   "type": "commonjs",
-  "description": "AppFactory canonical template — Expo (React Native) SPA + Cloudflare Workers (Hono) + Neon (Drizzle) + Better-Auth. iOS/Android first; web via React Native Web.",
+  "description": "ManyHandz — household chore management for families and roommates. Expo (React Native) native-first + Cloudflare Workers (Hono) + Neon (Drizzle) + Better-Auth.",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",

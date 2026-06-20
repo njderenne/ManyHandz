@@ -19,8 +19,8 @@ export const authClient = createAuthClient({
   plugins: [
     organizationClient(),
     expoClient({
-      scheme: 'apptemplate',
-      storagePrefix: 'apptemplate',
+      scheme: 'manyhandz',
+      storagePrefix: 'manyhandz',
       storage: SecureStore,
     }),
   ],

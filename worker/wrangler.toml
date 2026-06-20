@@ -1,4 +1,4 @@
-name = "app-template"
+name = "manyhandz"
 main = "index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
@@ -25,11 +25,11 @@ binding = "RATE_LIMIT"
 id = "ab3b39cd687d45ee866b1df6917fd0f3"
 
 # Media uploads (worker/routes/media.ts — answers 501 until this is enabled).
-# R2 needs one-time dashboard enablement → then: npx wrangler r2 bucket create app-template-media,
+# R2 needs one-time dashboard enablement → then: npx wrangler r2 bucket create manyhandz-media,
 # uncomment, deploy.
 # [[r2_buckets]]
 # binding = "MEDIA"
-# bucket_name = "app-template-media"
+# bucket_name = "manyhandz-media"
 
 # --- Provisioned per-app by the factory (Phase 2+) ---
 # [[d1_databases]]          # simple/experiment tier

@@ -135,11 +135,6 @@ export const STACK: StackGroup[] = [
     title: 'Device capabilities',
     entries: [
       {
-        name: 'Location & maps',
-        tech: 'expo-location + react-native-maps',
-        detail: 'Last-known-first GPS (fast fix, timeout-bounded); Apple Maps on iOS, Google Maps on Android.',
-      },
-      {
         name: 'Biometrics & security',
         tech: 'expo-local-authentication · expo-secure-store',
         detail: 'Face ID / Touch ID / passcode unlock; PIN lock; session tokens in the platform keychain.',

@@ -91,7 +91,7 @@ The app **never calls AI providers directly** — it calls *your Worker*, which 
 **The one thing to configure:** `EXPO_PUBLIC_API_URL` is the address the app calls, and it's **baked into the build at build time**.
 
 - In dev it's often `http://localhost:8787` (your local `wrangler dev`). That is **useless in a standalone build** — `localhost` on the phone means the phone itself.
-- For `preview`/`production` builds, set `EXPO_PUBLIC_API_URL` to your **deployed Worker's public URL** (e.g. `https://app-template.<account>.workers.dev` or your custom domain), via [EAS environment variables](https://docs.expo.dev/eas/environment-variables/) or `eas.json` per-profile `env`.
+- For `preview`/`production` builds, set `EXPO_PUBLIC_API_URL` to your **deployed Worker's public URL** (e.g. `https://manyhandz.<account>.workers.dev` or your custom domain), via [EAS environment variables](https://docs.expo.dev/eas/environment-variables/) or `eas.json` per-profile `env`.
 
 So a fully functional gym-testable build needs the backend live:
 
