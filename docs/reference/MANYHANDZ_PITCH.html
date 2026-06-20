@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark" />
+<title>ManyHandz — Comprehensive Product &amp; Technology Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1f2937;
+  --bg-hover: #374151;
+  --bg-card-elevated: #1a2234;
+
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-dim: #475569;
+
+  --accent-indigo: #6366f1;
+  --accent-indigo-hover: #818cf8;
+  --accent-indigo-soft: rgba(99, 102, 241, 0.15);
+  --accent-cyan: #22d3ee;
+  --accent-cyan-soft: rgba(34, 211, 238, 0.15);
+  --accent-success: #34d399;
+  --accent-success-soft: rgba(52, 211, 153, 0.15);
+  --accent-warning: #fbbf24;
+  --accent-warning-soft: rgba(251, 191, 36, 0.15);
+  --accent-danger: #f87171;
+  --accent-danger-soft: rgba(248, 113, 113, 0.15);
+  --accent-violet: #a78bfa;
+  --accent-pink: #f472b6;
+  --accent-rose: #fb7185;
+
+  --border-default: rgba(148, 163, 184, 0.12);
+  --border-strong: rgba(148, 163, 184, 0.22);
+  --border-focus: rgba(99, 102, 241, 0.5);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,0.45);
+  --shadow-glow: 0 0 60px rgba(99, 102, 241, 0.25);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Background ornaments */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(at 10% 0%, rgba(99,102,241,0.10) 0px, transparent 50%),
+    radial-gradient(at 90% 10%, rgba(34,211,238,0.07) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(167,139,250,0.06) 0px, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+main, header, nav, footer { position: relative; z-index: 1; }
+
+/* Top nav */
+.topnav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(10, 14, 26, 0.78);
+  border-bottom: 1px solid var(--border-default);
+}
+.topnav-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.brand-logo {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-violet));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-glow);
+}
+.brand-logo svg { width: 22px; height: 22px; }
+.nav-links {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+}
+.nav-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+.nav-links a:hover { color: var(--text-primary); }
+@media (max-width: 900px) { .nav-links { display: none; } }
+
+/* Layout shells */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+@media (max-width: 640px) { .container { padding: 0 20px; } }
+
+section {
+  padding: 96px 0;
+  scroll-margin-top: 80px;
+}
+@media (max-width: 768px) { section { padding: 64px 0; } }
+
+/* Hero */
+.hero {
+  padding: 120px 0 80px;
+  text-align: center;
+  position: relative;
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--accent-indigo-soft);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--accent-indigo-hover);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+.hero-eyebrow .pulse {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent-indigo);
+  box-shadow: 0 0 12px var(--accent-indigo);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.hero h1 {
+  font-size: clamp(38px, 6vw, 72px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  max-width: 900px;
+  margin: 0 auto 24px;
+  background: linear-gradient(180deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p.tagline {
+  font-size: clamp(18px, 2vw, 22px);
+  color: var(--text-secondary);
+  max-width: 720px;
+  margin: 0 auto 16px;
+  line-height: 1.5;
+}
+.hero p.subline {
+  font-size: 15px;
+  color: var(--text-muted);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Stat strip */
+.stat-strip {
+  margin-top: 64px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.stat {
+  background: var(--bg-secondary);
+  padding: 28px 20px;
+  text-align: center;
+}
+.stat-value {
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.stat-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+@media (max-width: 768px) {
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Section heading */
+.section-header {
+  margin-bottom: 56px;
+  max-width: 720px;
+}
+.section-header.center { margin-left: auto; margin-right: auto; text-align: center; }
+.section-eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+  margin-bottom: 12px;
+}
+.section-header h2 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 16px;
+}
+.section-header p {
+  font-size: 17px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Cards */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.card:hover { border-color: var(--border-strong); }
+.card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  font-size: 22px;
+}
+.card-icon.indigo { background: var(--accent-indigo-soft); color: var(--accent-indigo); }
+.card-icon.cyan { background: var(--accent-cyan-soft); color: var(--accent-cyan); }
+.card-icon.success { background: var(--accent-success-soft); color: var(--accent-success); }
+.card-icon.warning { background: var(--accent-warning-soft); color: var(--accent-warning); }
+.card-icon.danger { background: var(--accent-danger-soft); color: var(--accent-danger); }
+.card-icon.violet { background: rgba(167, 139, 250, 0.15); color: var(--accent-violet); }
+.card-icon.pink { background: rgba(244, 114, 182, 0.15); color: var(--accent-pink); }
+.card h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+.card p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.card ul {
+  list-style: none;
+  margin-top: 12px;
+}
+.card ul li {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  padding: 5px 0 5px 18px;
+  position: relative;
+}
+.card ul li::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 12px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  opacity: 0.7;
+}
+
+/* Grids */
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1024px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .grid-4 { grid-template-columns: 1fr; }
+}
+
+/* Mode comparison */
+.modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 800px) { .modes { grid-template-columns: 1fr; } }
+.mode-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 36px;
+  position: relative;
+  overflow: hidden;
+}
+.mode-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient);
+  opacity: 0.08;
+  pointer-events: none;
+}
+.mode-card.family { --gradient: linear-gradient(135deg, var(--accent-indigo), var(--accent-pink)); }
+.mode-card.roommate { --gradient: linear-gradient(135deg, var(--accent-cyan), var(--accent-success)); }
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.mode-card.family .mode-badge { background: var(--accent-indigo-soft); color: var(--accent-indigo-hover); }
+.mode-card.roommate .mode-badge { background: var(--accent-cyan-soft); color: var(--accent-cyan); }
+.mode-card h3 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+.mode-card .mode-desc {
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  font-size: 15px;
+}
+.mode-features { list-style: none; }
+.mode-features li {
+  padding: 10px 0;
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.mode-features li:first-child { border-top: 0; padding-top: 0; }
+.mode-features li::before {
+  content: '✓';
+  flex-shrink: 0;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-tertiary);
+  margin-top: 1px;
+}
+.mode-card.family .mode-features li::before { color: var(--accent-pink); }
+.mode-card.roommate .mode-features li::before { color: var(--accent-cyan); }
+
+/* Tech stack pills */
+.stack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.tech {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.tech:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-card-elevated);
+}
+.tech-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+  color: var(--accent-cyan);
+}
+.tech-dot.indigo { color: var(--accent-indigo); background: var(--accent-indigo); }
+.tech-dot.success { color: var(--accent-success); background: var(--accent-success); }
+.tech-dot.warning { color: var(--accent-warning); background: var(--accent-warning); }
+.tech-dot.violet { color: var(--accent-violet); background: var(--accent-violet); }
+.tech-name {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.tech-role {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Feature catalog (collapsible-style flat) */
+.feature-domain {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  margin-bottom: 20px;
+}
+.feature-domain-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-default);
+}
+.feature-domain-icon {
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  background: var(--accent-indigo-soft);
+  color: var(--accent-indigo);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.feature-domain-header h3 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.feature-domain-header .feature-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-tertiary);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.feature-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.feature {
+  padding: 14px 16px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+.feature:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-card-elevated);
+}
+.feature-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feature-title .badge {
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.badge.family { background: var(--accent-indigo-soft); color: var(--accent-indigo-hover); }
+.badge.roommate { background: var(--accent-cyan-soft); color: var(--accent-cyan); }
+.badge.parent { background: var(--accent-warning-soft); color: var(--accent-warning); }
+.badge.kid { background: var(--accent-success-soft); color: var(--accent-success); }
+.badge.ai { background: rgba(167,139,250,0.15); color: var(--accent-violet); }
+.feature-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Color swatches */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.swatch {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+}
+.swatch-color {
+  height: 80px;
+  position: relative;
+}
+.swatch-info {
+  padding: 12px 14px;
+}
+.swatch-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.swatch-hex {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Typography sample */
+.type-sample {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  margin-bottom: 12px;
+}
+.type-sample .scale-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: block;
+}
+
+/* Architecture diagram */
+.arch-diagram {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 40px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  overflow-x: auto;
+}
+.arch-layer {
+  margin-bottom: 20px;
+}
+.arch-layer:last-child { margin-bottom: 0; }
+.arch-layer-title {
+  font-size: 11px;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  font-family: 'Inter', sans-serif;
+}
+.arch-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.arch-box {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.arch-box.primary { background: var(--accent-indigo-soft); border-color: rgba(99,102,241,0.3); color: var(--accent-indigo-hover); }
+.arch-box.secondary { background: var(--accent-cyan-soft); border-color: rgba(34,211,238,0.3); color: var(--accent-cyan); }
+.arch-arrow {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 16px;
+  margin: 4px 0;
+}
+
+/* Pricing */
+.pricing {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  max-width: 820px;
+  margin: 0 auto;
+}
+@media (max-width: 700px) { .pricing { grid-template-columns: 1fr; } }
+.price-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 36px;
+  position: relative;
+}
+.price-card.featured {
+  border-color: var(--accent-indigo);
+  box-shadow: 0 0 80px rgba(99, 102, 241, 0.15);
+}
+.price-card.featured::before {
+  content: 'BEST VALUE';
+  position: absolute;
+  top: -10px;
+  left: 36px;
+  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-violet));
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.price-name { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+.price-amount { font-size: 48px; font-weight: 800; letter-spacing: -0.03em; }
+.price-amount sup { font-size: 24px; font-weight: 600; color: var(--text-secondary); }
+.price-period { font-size: 14px; color: var(--text-muted); }
+.price-save { color: var(--accent-success); font-size: 13px; font-weight: 500; margin-top: 4px; }
+
+/* Security checklist */
+.check-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+@media (max-width: 700px) { .check-list { grid-template-columns: 1fr; } }
+.check-list li {
+  padding: 14px 18px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--border-default);
+}
+.check-list li::before {
+  content: '🛡';
+  flex-shrink: 0;
+}
+
+/* Roadmap */
+.roadmap {
+  position: relative;
+}
+.roadmap::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--accent-indigo) 0%, var(--accent-cyan) 50%, transparent 100%);
+}
+.roadmap-item {
+  position: relative;
+  padding: 0 0 28px 48px;
+}
+.roadmap-item::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 3px solid var(--accent-indigo);
+}
+.roadmap-item.next::before { border-color: var(--accent-cyan); }
+.roadmap-item.future::before { border-color: var(--text-muted); background: var(--bg-secondary); }
+.roadmap-stage {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-indigo);
+  margin-bottom: 4px;
+}
+.roadmap-item.next .roadmap-stage { color: var(--accent-cyan); }
+.roadmap-item.future .roadmap-stage { color: var(--text-muted); }
+.roadmap-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+.roadmap-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* Highlight callouts */
+.callout {
+  background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(34,211,238,0.08));
+  border: 1px solid var(--accent-indigo-soft);
+  border-radius: var(--radius-xl);
+  padding: 36px;
+  text-align: center;
+}
+.callout h3 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+.callout p {
+  color: var(--text-secondary);
+  max-width: 640px;
+  margin: 0 auto;
+  font-size: 16px;
+}
+
+/* Footer */
+footer {
+  border-top: 1px solid var(--border-default);
+  padding: 48px 0;
+  margin-top: 48px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+footer p { margin: 4px 0; }
+
+/* Print styling */
+@media print {
+  body::before { display: none; }
+  body { background: white; color: black; }
+  .topnav { display: none; }
+  section { padding: 32px 0; }
+  .card, .mode-card, .feature-domain, .stat, .price-card, .swatch, .tech, .feature, .arch-diagram, .check-list li {
+    break-inside: avoid;
+    background: #fafafa !important;
+    color: #111 !important;
+    border-color: #ddd !important;
+  }
+  h1, h2, h3, h4 { color: #111 !important; -webkit-text-fill-color: #111 !important; }
+  .stat-value { color: #6366f1 !important; -webkit-text-fill-color: #6366f1 !important; }
+}
+
+/* Inline icon helper */
+.ic { display: inline-flex; vertical-align: middle; line-height: 0; }
+
+/* Bottom CTA spacing */
+.divider {
+  height: 1px;
+  background: var(--border-default);
+  max-width: 100px;
+  margin: 56px auto;
+}
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────  TOP NAV  ───────────────────────── -->
+<nav class="topnav">
+  <div class="topnav-inner">
+    <div class="brand">
+      <span class="brand-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11.5a3 3 0 0 0 5-2.236M15.5 7.5l-4 4"/><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/></svg>
+      </span>
+      ManyHandz
+    </div>
+    <div class="nav-links">
+      <a href="#vision">Vision</a>
+      <a href="#modes">Modes</a>
+      <a href="#features">Features</a>
+      <a href="#design">Design</a>
+      <a href="#stack">Tech</a>
+      <a href="#security">Security</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#roadmap">Roadmap</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ─────────────────────────  HERO  ───────────────────────── -->
+<header class="hero container">
+  <div class="hero-eyebrow"><span class="pulse"></span> Now with AI-powered photo verification</div>
+  <h1>Many hands make light work.</h1>
+  <p class="tagline">
+    The household coordination platform that ends chore disputes — with smart auto-rotation,
+    fairness scoring, photo proof verified by AI, and gamification that actually works.
+  </p>
+  <p class="subline">
+    Built for families &amp; roommates. Native iOS, Android, and web. Real-time sync.
+    14-day free trial. No credit card.
+  </p>
+
+  <div class="stat-strip">
+    <div class="stat">
+      <div class="stat-value">36</div>
+      <div class="stat-label">Pages shipped</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">26</div>
+      <div class="stat-label">API endpoints</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">90+</div>
+      <div class="stat-label">Components</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">2</div>
+      <div class="stat-label">Household modes</div>
+    </div>
+  </div>
+</header>
+
+<!-- ─────────────────────────  VISION / PROBLEM  ───────────────────────── -->
+<section id="vision" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">The problem</span>
+    <h2>Every household has an invisible weight nobody is tracking.</h2>
+    <p>
+      Chores fall on the same shoulders week after week. Promises about who-owes-whom evaporate.
+      Kids and roommates argue about fairness with no data to back it up. ManyHandz fixes this with
+      a single, unified system that tracks contribution, automates rotation, and rewards consistency.
+    </p>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-icon danger">⚖️</div>
+      <h3>Invisible inequality</h3>
+      <p>
+        The dishes get done — but always by the same person. Without measurement, the household never
+        sees the imbalance until someone explodes about it.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-icon warning">📋</div>
+      <h3>Lost accountability</h3>
+      <p>
+        Sticky notes, shared docs, group texts, and one-off reminders all fall through the cracks.
+        Nothing connects "what was promised" to "what got done."
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-icon violet">💸</div>
+      <h3>Forgotten IOUs</h3>
+      <p>
+        Allowances, splits, and "I owe you a treat" never get tracked. Money and favors are lost
+        in the shuffle, eroding trust over time.
+      </p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="callout">
+    <h3>One app. Every household. Real fairness.</h3>
+    <p>
+      ManyHandz is the first chore-coordination platform that combines auto-rotation, AI-verified
+      photo proof, gamification, and a complete ledger for promises — money and non-money alike.
+    </p>
+  </div>
+</section>
+
+<!-- ─────────────────────────  MODE-AWARE UX  ───────────────────────── -->
+<section id="modes" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Mode-aware UX</span>
+    <h2>Two completely different apps in one codebase.</h2>
+    <p>
+      ManyHandz adapts every screen, color, animation, and permission to who's using it.
+      Configuration-driven — adding a third mode (Office, College Dorm, Care Team) is a single file.
+    </p>
+  </div>
+
+  <div class="modes">
+
+    <div class="mode-card family">
+      <div class="mode-badge">👨‍👩‍👧‍👦 Family mode</div>
+      <h3>Parents manage, kids earn.</h3>
+      <p class="mode-desc">
+        Playful, gamified, age-appropriate. Parents set up chores and approve completions.
+        Kids see big level-up celebrations, work toward goals like a new video game,
+        and unlock badges. Allowance flows through Settle Up.
+      </p>
+      <ul class="mode-features">
+        <li>Parent + Kid role permissions matrix</li>
+        <li>Approval queue with photo verification</li>
+        <li>Achievement badges, levels (1–50+), XP</li>
+        <li>Big-ticket goals with auto-contribute</li>
+        <li>Rewards marketplace with points</li>
+        <li>Confetti, celebrations, streak fire</li>
+        <li>Birthday Pass &amp; gift points</li>
+        <li>Letter-grade weekly report cards</li>
+      </ul>
+    </div>
+
+    <div class="mode-card roommate">
+      <div class="mode-badge">🏠 Roommate mode</div>
+      <h3>Equal housemates, fair split.</h3>
+      <p class="mode-desc">
+        Clean, minimal, adult-oriented. Everyone has equal permissions. No approvals,
+        no gamification clutter — just transparent fairness scoring, auto-rotation,
+        and a complete ledger of who owes whom.
+      </p>
+      <ul class="mode-features">
+        <li>Honor system — instant completion</li>
+        <li>Fairness scoring is the hero feature</li>
+        <li>Auto-rotation: round-robin or fixed</li>
+        <li>Photo proof (optional)</li>
+        <li>Settle Up for shared expenses</li>
+        <li>Bonus challenges, head-to-head competitions</li>
+        <li>Clean weekly stats, no grades</li>
+        <li>Lightweight streaks &amp; activity feed</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────  FEATURE CATALOG  ───────────────────────── -->
+<section id="features" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Feature catalog</span>
+    <h2>Every capability that ships today.</h2>
+    <p>
+      120+ user-facing features organized into 18 domains, all built into the core product —
+      not bolt-on plugins. Filterable by mode and role.
+    </p>
+  </div>
+
+  <!-- ─── Onboarding & Auth ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🚪</div>
+      <h3>Onboarding &amp; Authentication</h3>
+      <span class="feature-count">14 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Email + Password signup</div><div class="feature-desc">Zod validation, password strength meter (Weak → Strong), terms acceptance</div></div>
+      <div class="feature"><div class="feature-title">Google OAuth <span class="badge ai">SSO</span></div><div class="feature-desc">Single-click sign in via Supabase Auth + Google provider</div></div>
+      <div class="feature"><div class="feature-title">Passkey / WebAuthn</div><div class="feature-desc">Biometric Face ID, Touch ID, Windows Hello via SimpleWebAuthn</div></div>
+      <div class="feature"><div class="feature-title">Forgot password</div><div class="feature-desc">Branded reset email via Resend, secure token flow</div></div>
+      <div class="feature"><div class="feature-title">Reset password</div><div class="feature-desc">Token validation, expired-link UX, password confirmation</div></div>
+      <div class="feature"><div class="feature-title">Email verification banner</div><div class="feature-desc">Persistent reminder until inbox-confirmed, with one-click resend</div></div>
+      <div class="feature"><div class="feature-title">Multi-step onboarding</div><div class="feature-desc">Create-or-join household → profile → trial activation → chore presets</div></div>
+      <div class="feature"><div class="feature-title">Household mode selection</div><div class="feature-desc">Visual cards comparing Family vs Roommate. Sets permissions for life of household.</div></div>
+      <div class="feature"><div class="feature-title">Invite-code joining</div><div class="feature-desc">Short code, shareable link, QR code, deep-link support</div></div>
+      <div class="feature"><div class="feature-title">Avatar upload + crop</div><div class="feature-desc">Square crop, 500KB compression, public Supabase Storage bucket</div></div>
+      <div class="feature"><div class="feature-title">Profile fields</div><div class="feature-desc">Display name, bio (200 char), birthday, favorite color (12-color palette), payment handles</div></div>
+      <div class="feature"><div class="feature-title">14-day free trial activation</div><div class="feature-desc">No credit card. Trial banner counts down, gets prominent in last 3 days.</div></div>
+      <div class="feature"><div class="feature-title">Referral program</div><div class="feature-desc">Auto-generated codes (MANYHANDZ-XXXX). Both households get 1 free month.</div></div>
+      <div class="feature"><div class="feature-title">Multi-household switching</div><div class="feature-desc">Dropdown in header. Active household persisted to localStorage via Zustand.</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Dashboard ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🏠</div>
+      <h3>Dashboard</h3>
+      <span class="feature-count">15 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Mode-aware greeting</div><div class="feature-desc">Time-of-day greeting, name-personalized, family-playful vs roommate-clean</div></div>
+      <div class="feature"><div class="feature-title">Quick stats bar</div><div class="feature-desc">Due Today, Completed Today, Day Streak, Points — at-a-glance metrics</div></div>
+      <div class="feature"><div class="feature-title">Trial banner</div><div class="feature-desc">Dismissible. Color-shifts red on last day. Disagreement bug fixed.</div></div>
+      <div class="feature"><div class="feature-title">Birthday banner <span class="badge family">family</span></div><div class="feature-desc">Confetti, "Send Birthday Gift" button, respects mute_celebrations preference</div></div>
+      <div class="feature"><div class="feature-title">Active Challenge card</div><div class="feature-desc">Countdown, progress bar, multiplier badge</div></div>
+      <div class="feature"><div class="feature-title">Head-to-Head "VS" card</div><div class="feature-desc">Avatars, live scores, countdown until competition ends</div></div>
+      <div class="feature"><div class="feature-title">Today's assignments</div><div class="feature-desc">Sorted by priority; quick complete, postpone, swap actions</div></div>
+      <div class="feature"><div class="feature-title">Overdue section</div><div class="feature-desc">Red-highlighted, count badge in nav, urgency styling</div></div>
+      <div class="feature"><div class="feature-title">Activity feed</div><div class="feature-desc">Real-time via Supabase. Reactions: 👍 ❤️ 🔥 ⭐ 👏</div></div>
+      <div class="feature"><div class="feature-title">Household Health Score</div><div class="feature-desc">0–100 gauge with 5-component breakdown (completion, fairness, streak, overdue, engagement)</div></div>
+      <div class="feature"><div class="feature-title">Active polls</div><div class="feature-desc">Voteable cards, live bar-chart results, anonymous voting option</div></div>
+      <div class="feature"><div class="feature-title">Settle Up widget</div><div class="feature-desc">"You owe Mom $35" or "Sam owes you: ice cream trip"</div></div>
+      <div class="feature"><div class="feature-title">Shopping widget</div><div class="feature-desc">"8 items needed" with quick check-off</div></div>
+      <div class="feature"><div class="feature-title">AI Suggestions card <span class="badge ai">AI</span></div><div class="feature-desc">GPT-4o analyzes 2 weeks of data weekly, surfaces 3–5 actions</div></div>
+      <div class="feature"><div class="feature-title">Quick-Add chore inline</div><div class="feature-desc">Type → enter. Creates with smart defaults. Parent/roommate only.</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Chores & Assignments ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🧹</div>
+      <h3>Chores &amp; Assignments</h3>
+      <span class="feature-count">16 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Chore library</div><div class="feature-desc">Searchable, filterable grid. Category, difficulty, time estimates.</div></div>
+      <div class="feature"><div class="feature-title">Difficulty 1–5</div><div class="feature-desc">Star rating affects points calculation</div></div>
+      <div class="feature"><div class="feature-title">Estimated minutes</div><div class="feature-desc">5–120 min slider. Drives speed-bonus calculation.</div></div>
+      <div class="feature"><div class="feature-title">Custom chore icon</div><div class="feature-desc">Lucide-icon picker with 40+ choices</div></div>
+      <div class="feature"><div class="feature-title">Checklist steps</div><div class="feature-desc">Inline add/reorder/delete. Stored as JSONB. Optional gating.</div></div>
+      <div class="feature"><div class="feature-title">Reference photo "The Goal"</div><div class="feature-desc">Upload, compressed to 500KB. Shown as "Make it look like this!" for kids.</div></div>
+      <div class="feature"><div class="feature-title">37 chore templates</div><div class="feature-desc">Kitchen, Bathroom, Living, Bedroom, Outdoor, Laundry, Pets, General — pre-built checklists</div></div>
+      <div class="feature"><div class="feature-title">Custom categories</div><div class="feature-desc">Household creates own. Lucide icon + color picker.</div></div>
+      <div class="feature"><div class="feature-title">Per-chore AI verification</div><div class="feature-desc">Toggle on chores where photo proof matters. Configurable thresholds.</div></div>
+      <div class="feature"><div class="feature-title">Per-chore approval requirement</div><div class="feature-desc">Override household default. "Parent must approve before points awarded."</div></div>
+      <div class="feature"><div class="feature-title">Assignment detail page</div><div class="feature-desc">Full info, status timeline, comments thread, reassign / swap / skip</div></div>
+      <div class="feature"><div class="feature-title">Photo proof flow</div><div class="feature-desc">Before + After photos with comparison slider, AI verification badge</div></div>
+      <div class="feature"><div class="feature-title">Timer + speed bonus</div><div class="feature-desc">Start → live timer → Done. Bonus pts for finishing under estimate.</div></div>
+      <div class="feature"><div class="feature-title">Postpone / snooze</div><div class="feature-desc">Max 3 snoozes, max 7 days past original. Kids' overdue snoozes need approval.</div></div>
+      <div class="feature"><div class="feature-title">Swap / trade</div><div class="feature-desc">Push to opponent. Accept/Decline. Auto-expire at due date.</div></div>
+      <div class="feature"><div class="feature-title">Skip with reason</div><div class="feature-desc">Birthday Pass, Vacation. Excluded from fairness penalty.</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Fairness & Rotation ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">⚖️</div>
+      <h3>Fairness &amp; Auto-Rotation</h3>
+      <span class="feature-count">10 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Fairness gauge per member</div><div class="feature-desc">Large circular display. Color-coded by deviation from ideal share.</div></div>
+      <div class="feature"><div class="feature-title">Household balance score</div><div class="feature-desc">0–100. "Perfectly Balanced" vs "Significantly Off"</div></div>
+      <div class="feature"><div class="feature-title">Period selector</div><div class="feature-desc">This/last week/month, custom date range</div></div>
+      <div class="feature"><div class="feature-title">Contribution pie chart</div><div class="feature-desc">Weighted by difficulty × time, not just count</div></div>
+      <div class="feature"><div class="feature-title">Weekly trend line</div><div class="feature-desc">Track fairness over time. Spot patterns.</div></div>
+      <div class="feature"><div class="feature-title">"Most avoided" section</div><div class="feature-desc">Which chores get skipped the most. Surface bad assignments.</div></div>
+      <div class="feature"><div class="feature-title">Zero-overdue streak</div><div class="feature-desc">Household-wide accomplishment counter</div></div>
+      <div class="feature"><div class="feature-title">Round-robin rotation</div><div class="feature-desc">Auto-advance through members each cycle. Skip away members.</div></div>
+      <div class="feature"><div class="feature-title">Fixed assignment</div><div class="feature-desc">"Always assigned to..." for specific chores</div></div>
+      <div class="feature"><div class="feature-title">Frequency engine</div><div class="feature-desc">Daily / weekly / biweekly / monthly. Cron-driven creation.</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Gamification ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🎮</div>
+      <h3>Gamification</h3>
+      <span class="feature-count">12 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Points system <span class="badge family">family</span></div><div class="feature-desc">difficulty × (min/15), with streak / speed / photo / challenge multipliers</div></div>
+      <div class="feature"><div class="feature-title">XP &amp; levels (1–50+)</div><div class="feature-desc">8 titles: Rookie → Helper → Contributor → Pro → Master → Legend → Elite → Hall of Fame</div></div>
+      <div class="feature"><div class="feature-title">Level-up celebration</div><div class="feature-desc">Full-screen overlay, confetti, push notification, activity feed entry</div></div>
+      <div class="feature"><div class="feature-title">Streaks</div><div class="feature-desc">Daily completion streak with fire icon scaling with length</div></div>
+      <div class="feature"><div class="feature-title">35+ achievement badges</div><div class="feature-desc">Consistency, Points, Skill, Competition, AI-approved, Fairness, Level, Goal, Social</div></div>
+      <div class="feature"><div class="feature-title">Custom parent-created badges</div><div class="feature-desc">Name, description, icon, color, auto-criteria (count / streak / category)</div></div>
+      <div class="feature"><div class="feature-title">Leaderboard <span class="badge family">family</span></div><div class="feature-desc">Crown for #1, medals for 2/3, weekly/monthly/all-time. Toggle-able.</div></div>
+      <div class="feature"><div class="feature-title">Point gifting</div><div class="feature-desc">Recipient, amount, note, type (General/Thank You/Birthday/Bonus)</div></div>
+      <div class="feature"><div class="feature-title">Head-to-head competitions</div><div class="feature-desc">Most Points, Most Completions, First to Target, Chore Race. Stakes wagered.</div></div>
+      <div class="feature"><div class="feature-title">Bonus challenges</div><div class="feature-desc">Double Points, Completion Count, No Overdue, Custom</div></div>
+      <div class="feature"><div class="feature-title">Milestone celebrations</div><div class="feature-desc">100/500/1000/5000/10000 completions, perfect month, 1/3 year strong</div></div>
+      <div class="feature"><div class="feature-title">Year-in-Review</div><div class="feature-desc">Animated 7-step recap: MVP, fastest, busiest month, fun facts. Shareable.</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Rewards & Goals ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🎁</div>
+      <h3>Rewards &amp; Goals <span class="badge family" style="font-size:10px;margin-left:4px">family-only</span></h3>
+      <span class="feature-count">9 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Rewards marketplace</div><div class="feature-desc">Parent-curated. Name, icon, point cost. Grayed-out if insufficient.</div></div>
+      <div class="feature"><div class="feature-title">Redemption flow</div><div class="feature-desc">Kid taps Redeem → parent approves → Settle Up entry created</div></div>
+      <div class="feature"><div class="feature-title">Goals dashboard</div><div class="feature-desc">Active goals with progress rings, monetary value, estimated completion date</div></div>
+      <div class="feature"><div class="feature-title">Auto-contribute</div><div class="feature-desc">Set % of every earned point auto-flows to active goal</div></div>
+      <div class="feature"><div class="feature-title">Big-ticket goal types</div><div class="feature-desc">Money, treat, gift, privilege, experience, custom</div></div>
+      <div class="feature"><div class="feature-title">Goal suggestions</div><div class="feature-desc">"New Video Game 500 pts/$60", "Pizza Night 300", "Extra Screen Time 100"</div></div>
+      <div class="feature"><div class="feature-title">Goal completion celebration</div><div class="feature-desc">Confetti, push, activity feed, email — auto-creates Settle Up</div></div>
+      <div class="feature"><div class="feature-title">Allowance automation <span class="badge family">family</span></div><div class="feature-desc">Per-kid: enable, money OR non-monetary, amount, threshold %. Weekly cron.</div></div>
+      <div class="feature"><div class="feature-title">Contribution history</div><div class="feature-desc">Per-goal log: who contributed when, projected completion</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Settle Up ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">💸</div>
+      <h3>Settle Up — Money &amp; Non-Money Ledger</h3>
+      <span class="feature-count">11 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Net balance per pair</div><div class="feature-desc">Money: dollars. Non-money: count of outstanding promises.</div></div>
+      <div class="feature"><div class="feature-title">6 payout types</div><div class="feature-desc">Money, treat, gift, privilege, experience, custom</div></div>
+      <div class="feature"><div class="feature-title">Auto-create on goal fulfillment</div><div class="feature-desc">Monetary goal → money payout. Non-monetary → parent picks type.</div></div>
+      <div class="feature"><div class="feature-title">Auto-create on reward redemption</div><div class="feature-desc">Kid redeems → settlement queued for parent</div></div>
+      <div class="feature"><div class="feature-title">Auto-create on competition stake</div><div class="feature-desc">Parsed from stakes_description into Settle Up entry</div></div>
+      <div class="feature"><div class="feature-title">Manual entry</div><div class="feature-desc">Any member creates IOU. Roommate-friendly.</div></div>
+      <div class="feature"><div class="feature-title">Payment deep-links</div><div class="feature-desc">Venmo, PayPal, Cash App with pre-filled amount + note. Apple Cash via iMessage.</div></div>
+      <div class="feature"><div class="feature-title">"Mark as Paid" / "Mark as Fulfilled"</div><div class="feature-desc">Creditor confirms. Logs settled_via (deep-link, in_person, other).</div></div>
+      <div class="feature"><div class="feature-title">Forgive obligation</div><div class="feature-desc">Waive a settlement. Logged for transparency.</div></div>
+      <div class="feature"><div class="feature-title">Filter tabs</div><div class="feature-desc">All / Money / Treats / Privileges / Experiences</div></div>
+      <div class="feature"><div class="feature-title">Settlement history export</div><div class="feature-desc">CSV download for records</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Schedule ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">📅</div>
+      <h3>Schedule</h3>
+      <span class="feature-count">8 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Week view (default)</div><div class="feature-desc">7-day columns, color-coded by member, mobile-friendly horizontal scroll</div></div>
+      <div class="feature"><div class="feature-title">Month view</div><div class="feature-desc">Calendar grid with dot indicators per assignment</div></div>
+      <div class="feature"><div class="feature-title">Filter by member</div><div class="feature-desc">"Just Sam's chores this week"</div></div>
+      <div class="feature"><div class="feature-title">Filter by category</div><div class="feature-desc">Bathroom only, Outdoor only, etc.</div></div>
+      <div class="feature"><div class="feature-title">Filter by status</div><div class="feature-desc">Pending / In-progress / Done / Overdue</div></div>
+      <div class="feature"><div class="feature-title">Drag-and-drop reassign</div><div class="feature-desc">Desktop: drag between members. Mobile: tap-to-reassign.</div></div>
+      <div class="feature"><div class="feature-title">Inline assignment creation</div><div class="feature-desc">Click an empty slot → create assignment with smart defaults</div></div>
+      <div class="feature"><div class="feature-title">Today indicator</div><div class="feature-desc">Visual highlight on current day, both views</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Approval Queue ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">✅</div>
+      <h3>Approval Queue <span class="badge family" style="font-size:10px;margin-left:4px">family-only</span></h3>
+      <span class="feature-count">7 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Pending completions list</div><div class="feature-desc">All kids' submissions awaiting parent review</div></div>
+      <div class="feature"><div class="feature-title">3-up photo comparison</div><div class="feature-desc">Reference | Before | After. Tappable full-screen.</div></div>
+      <div class="feature"><div class="feature-title">AI verification panel <span class="badge ai">AI</span></div><div class="feature-desc">Confidence score, reasoning, reference_match_score, auto-approve recommendation</div></div>
+      <div class="feature"><div class="feature-title">One-tap approve</div><div class="feature-desc">Points awarded instantly, push to kid</div></div>
+      <div class="feature"><div class="feature-title">Reject with feedback</div><div class="feature-desc">Required reason. Push to kid. Returns to "in progress".</div></div>
+      <div class="feature"><div class="feature-title">Notification action buttons</div><div class="feature-desc">[✓ Approve] [Review] directly in push notification</div></div>
+      <div class="feature"><div class="feature-title">Bulk approve</div><div class="feature-desc">Approve all pending in one tap (manual override of AI on low-confidence batch)</div></div>
+    </div>
+  </div>
+
+  <!-- ─── AI features ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🤖</div>
+      <h3>AI-Powered Capabilities</h3>
+      <span class="feature-count">7 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Photo verification <span class="badge ai">AI</span></div><div class="feature-desc">OpenAI GPT-4o or Anthropic Claude analyzes before/after/reference. Auto-approve ≥85%, flag 40–84%, reject &lt;40%.</div></div>
+      <div class="feature"><div class="feature-title">Photo-to-task <span class="badge ai">AI</span></div><div class="feature-desc">Snap a messy room → AI generates chore with subtasks, difficulty, time, category</div></div>
+      <div class="feature"><div class="feature-title">Photo-to-shopping <span class="badge ai">AI</span></div><div class="feature-desc">Empty shelf → AI suggests shopping items</div></div>
+      <div class="feature"><div class="feature-title">Receipt scanning <span class="badge ai">AI</span></div><div class="feature-desc">Receipt photo → check off matching shopping items</div></div>
+      <div class="feature"><div class="feature-title">Smart suggestions <span class="badge ai">AI</span></div><div class="feature-desc">Weekly analysis of 2 weeks of data → 3–5 actionable recommendations</div></div>
+      <div class="feature"><div class="feature-title">Share-target parsing <span class="badge ai">AI</span></div><div class="feature-desc">Share text from any app → AI splits into shopping items / quick tasks / chores</div></div>
+      <div class="feature"><div class="feature-title">Smart recurring detection <span class="badge ai">AI</span></div><div class="feature-desc">4-week pattern analysis: auto-add recurring shopping, promote repeating tasks to chores, calibrate difficulty/time</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Shopping & Quick Tasks ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🛒</div>
+      <h3>Shopping &amp; Quick Tasks</h3>
+      <span class="feature-count">8 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Multiple shopping lists</div><div class="feature-desc">Default "Groceries" auto-created. Add Hardware, Pet Supplies, Holiday, etc.</div></div>
+      <div class="feature"><div class="feature-title">Quick-add input</div><div class="feature-desc">Type → enter. Auto-categorizes (Produce, Dairy, Cleaning, etc).</div></div>
+      <div class="feature"><div class="feature-title">Real-time sync</div><div class="feature-desc">Live checkbox updates across devices via Supabase Realtime</div></div>
+      <div class="feature"><div class="feature-title">Strike-through animation</div><div class="feature-desc">Slide to "checked" section on completion</div></div>
+      <div class="feature"><div class="feature-title">Recurring items</div><div class="feature-desc">Auto-add rules: "Milk every Sunday"</div></div>
+      <div class="feature"><div class="feature-title">"Need supplies?" prompt</div><div class="feature-desc">On chore completion: surface shopping list</div></div>
+      <div class="feature"><div class="feature-title">Quick Tasks</div><div class="feature-desc">One-off to-dos. No points, no gamification. Single-tap complete.</div></div>
+      <div class="feature"><div class="feature-title">Promote to chore</div><div class="feature-desc">If a quick task repeats → suggest converting to recurring chore</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Bundles ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">📦</div>
+      <h3>Chore Bundles / Deep-Clean Groups</h3>
+      <span class="feature-count">5 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Group chores into bundles</div><div class="feature-desc">"Saturday Deep Clean", "Move-In Setup", "Holiday Prep"</div></div>
+      <div class="feature"><div class="feature-title">Single due-date</div><div class="feature-desc">Whole bundle due at once. Master progress bar.</div></div>
+      <div class="feature"><div class="feature-title">Split assignment</div><div class="feature-desc">Divide chores across members</div></div>
+      <div class="feature"><div class="feature-title">Full-bundle assignment</div><div class="feature-desc">All chores to one person</div></div>
+      <div class="feature"><div class="feature-title">+10% bundle completion bonus</div><div class="feature-desc">Reward for grinding through a group</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Comments, Polls, Announcements ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">💬</div>
+      <h3>Communication</h3>
+      <span class="feature-count">7 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Assignment comments</div><div class="feature-desc">Chronological thread, 500 char each, 50 max. Real-time sync.</div></div>
+      <div class="feature"><div class="feature-title">Activity-feed reactions</div><div class="feature-desc">👍 ❤️ 🔥 ⭐ 👏 — toggle, counts displayed</div></div>
+      <div class="feature"><div class="feature-title">Household polls</div><div class="feature-desc">2–6 options, multi-select option, anonymous option, auto-close time</div></div>
+      <div class="feature"><div class="feature-title">Live vote bar charts</div><div class="feature-desc">Real-time updates as members vote</div></div>
+      <div class="feature"><div class="feature-title">Announcements</div><div class="feature-desc">Dashboard banner, priority levels (normal/important/urgent), optional expiry</div></div>
+      <div class="feature"><div class="feature-title">Push to comment</div><div class="feature-desc">Notification when someone replies on your assignment</div></div>
+      <div class="feature"><div class="feature-title">Birthday system</div><div class="feature-desc">Daily cron checks. Banner, Birthday Pass, gift points, "Birthday Star" badge.</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Reports ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">📊</div>
+      <h3>Reports &amp; Analytics</h3>
+      <span class="feature-count">8 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Weekly Report Cards</div><div class="feature-desc">Generated Sundays via cron. Per-member stats.</div></div>
+      <div class="feature"><div class="feature-title">Letter grades <span class="badge family">family</span></div><div class="feature-desc">A+ → F based on completion ratio + on-time rate</div></div>
+      <div class="feature"><div class="feature-title">MVP of the week</div><div class="feature-desc">Crown badge. Highlighted in email digest.</div></div>
+      <div class="feature"><div class="feature-title">Star chore</div><div class="feature-desc">Most-completed chore that week, per member</div></div>
+      <div class="feature"><div class="feature-title">Labels</div><div class="feature-desc">Most Consistent, Most Improved, Needs Attention, Speed Demon</div></div>
+      <div class="feature"><div class="feature-title">Share as image</div><div class="feature-desc">Auto-generated report card image, shareable on social</div></div>
+      <div class="feature"><div class="feature-title">Email digest</div><div class="feature-desc">Branded dark-themed HTML via Resend</div></div>
+      <div class="feature"><div class="feature-title">Historical archive</div><div class="feature-desc">Scrollable past weeks, expandable detail</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Settings / Admin ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">⚙️</div>
+      <h3>Settings &amp; Household Admin</h3>
+      <span class="feature-count">14 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Personal profile</div><div class="feature-desc">Name, photo, email, birthday, bio, timezone, favorite color</div></div>
+      <div class="feature"><div class="feature-title">Passkeys management</div><div class="feature-desc">List devices, rename, delete</div></div>
+      <div class="feature"><div class="feature-title">Payment handles</div><div class="feature-desc">Venmo, PayPal, Cash App, Apple Cash. Deep-link only — no credentials.</div></div>
+      <div class="feature"><div class="feature-title">Away Mode</div><div class="feature-desc">Pause rotation, no new assignments, no streak penalty, "Away" badge</div></div>
+      <div class="feature"><div class="feature-title">Mute celebrations</div><div class="feature-desc">Disable confetti/animations for the noise-averse</div></div>
+      <div class="feature"><div class="feature-title">Household rules</div><div class="feature-desc">Require photo proof, require approval, checklist gating, snooze approval</div></div>
+      <div class="feature"><div class="feature-title">Kid permissions</div><div class="feature-desc">Toggle: gifting, challenges, competitions, max stakes</div></div>
+      <div class="feature"><div class="feature-title">AI verification config</div><div class="feature-desc">Master toggle, provider (OpenAI/Anthropic), thresholds, cost cap, usage display</div></div>
+      <div class="feature"><div class="feature-title">Notification preferences</div><div class="feature-desc">Per-type push toggles + email toggles separately</div></div>
+      <div class="feature"><div class="feature-title">Data export</div><div class="feature-desc">CSV (completions), PDF (fairness), JSON (full backup)</div></div>
+      <div class="feature"><div class="feature-title">Account management</div><div class="feature-desc">Change password, sign out, delete account (CCPA/GDPR compliant)</div></div>
+      <div class="feature"><div class="feature-title">Replay tutorial</div><div class="feature-desc">4-stop onboarding walkthrough, re-launchable any time</div></div>
+      <div class="feature"><div class="feature-title">Send feedback / support</div><div class="feature-desc">Subject dropdown, message, optional screenshot, emails to SUPPORT_EMAIL</div></div>
+      <div class="feature"><div class="feature-title">Delete household</div><div class="feature-desc">Confirmation flow, cascade to all data, billing cancellation</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Notifications & Real-time ─── -->
+  <div class="feature-domain">
+    <div class="feature-domain-header">
+      <div class="feature-domain-icon">🔔</div>
+      <h3>Notifications &amp; Real-Time</h3>
+      <span class="feature-count">9 features</span>
+    </div>
+    <div class="feature-list">
+      <div class="feature"><div class="feature-title">Web Push (VAPID)</div><div class="feature-desc">Service-worker-driven, works PWA-installed or in-browser</div></div>
+      <div class="feature"><div class="feature-title">25+ notification types</div><div class="feature-desc">Reminders, overdue alerts, approval requests, completions, level-ups, achievements, etc.</div></div>
+      <div class="feature"><div class="feature-title">Notification action buttons</div><div class="feature-desc">[✓ Approve] [Review], [▶ Start Now] [⏰ Postpone] — handled in service worker</div></div>
+      <div class="feature"><div class="feature-title">Email notifications via Resend</div><div class="feature-desc">7 branded HTML templates: digest, approval, overdue, trial-ending, payment-failed, goal-completed, welcome</div></div>
+      <div class="feature"><div class="feature-title">Real-time activity feed</div><div class="feature-desc">Supabase Realtime channels stream new events instantly</div></div>
+      <div class="feature"><div class="feature-title">Real-time assignment status</div><div class="feature-desc">See "Sam started Washing Dishes" the moment it happens</div></div>
+      <div class="feature"><div class="feature-title">Real-time approval queue</div><div class="feature-desc">New submissions appear without refresh</div></div>
+      <div class="feature"><div class="feature-title">Real-time shopping checks</div><div class="feature-desc">Cross off the milk from any device, all devices update</div></div>
+      <div class="feature"><div class="feature-title">PWA Share Target</div><div class="feature-desc">"Share to ManyHandz" from any app → routes to /share-intake → AI parses</div></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ─────────────────────────  DESIGN SYSTEM  ───────────────────────── -->
+<section id="design" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Design system</span>
+    <h2>Dark-first. Mobile-first. Crafted.</h2>
+    <p>Every screen built from the same tightly-controlled palette, type scale, and spacing grid. shadcn/ui + Tailwind 4 + custom CSS variables.</p>
+  </div>
+
+  <h3 style="font-size:18px; margin-bottom:18px; font-weight:600;">Color palette</h3>
+  <div class="swatches" style="margin-bottom:48px;">
+    <div class="swatch"><div class="swatch-color" style="background:#0a0e1a"></div><div class="swatch-info"><div class="swatch-name">Background</div><div class="swatch-hex">#0a0e1a</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#111827"></div><div class="swatch-info"><div class="swatch-name">Secondary</div><div class="swatch-hex">#111827</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#1f2937"></div><div class="swatch-info"><div class="swatch-name">Tertiary</div><div class="swatch-hex">#1f2937</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#6366f1"></div><div class="swatch-info"><div class="swatch-name">Indigo (primary)</div><div class="swatch-hex">#6366f1</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#22d3ee"></div><div class="swatch-info"><div class="swatch-name">Cyan (secondary)</div><div class="swatch-hex">#22d3ee</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#34d399"></div><div class="swatch-info"><div class="swatch-name">Success</div><div class="swatch-hex">#34d399</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#fbbf24"></div><div class="swatch-info"><div class="swatch-name">Warning</div><div class="swatch-hex">#fbbf24</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#f87171"></div><div class="swatch-info"><div class="swatch-name">Danger</div><div class="swatch-hex">#f87171</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#a78bfa"></div><div class="swatch-info"><div class="swatch-name">Violet</div><div class="swatch-hex">#a78bfa</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#f472b6"></div><div class="swatch-info"><div class="swatch-name">Pink</div><div class="swatch-hex">#f472b6</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#f1f5f9"></div><div class="swatch-info"><div class="swatch-name">Text primary</div><div class="swatch-hex">#f1f5f9</div></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#94a3b8"></div><div class="swatch-info"><div class="swatch-name">Text secondary</div><div class="swatch-hex">#94a3b8</div></div></div>
+  </div>
+
+  <h3 style="font-size:18px; margin-bottom:18px; font-weight:600;">Typography</h3>
+  <div class="type-sample"><span class="scale-label">Display · 72px / 800 / -0.03em</span><div style="font-size:48px; font-weight:800; letter-spacing:-0.03em; line-height:1.05;">Many hands make light work.</div></div>
+  <div class="type-sample"><span class="scale-label">Heading 1 · 32px / 700 / -0.02em</span><div style="font-size:32px; font-weight:700; letter-spacing:-0.02em;">Built for every household</div></div>
+  <div class="type-sample"><span class="scale-label">Heading 2 · 22px / 600 / -0.01em</span><div style="font-size:22px; font-weight:600; letter-spacing:-0.01em;">Fairness scoring &amp; analytics</div></div>
+  <div class="type-sample"><span class="scale-label">Body · 16px / 400</span><div style="font-size:16px;">Inter is used everywhere. Numbers render with tabular-nums for clean alignment in stats, points, and timers. Heading scale is tight and contrasted.</div></div>
+  <div class="type-sample"><span class="scale-label">Mono · 13px / 500</span><div style="font-family:'JetBrains Mono',monospace; font-size:13px;">53FDC34F · 60 pts · Lv.5 → Lv.6 · 100% fair</div></div>
+
+  <h3 style="font-size:18px; margin:48px 0 18px; font-weight:600;">Responsive breakpoints</h3>
+  <div class="grid-4">
+    <div class="card"><div class="card-icon cyan">📱</div><h3>Mobile</h3><p>375 — 767px. Bottom nav, FAB, single-column, 16px padding. Touch targets ≥44px.</p></div>
+    <div class="card"><div class="card-icon indigo">📱</div><h3>Mobile XL</h3><p>768 — 1023px. 2-column grids, more breathing room, no sidebar yet.</p></div>
+    <div class="card"><div class="card-icon violet">💻</div><h3>Desktop</h3><p>1024 — 1279px. Sidebar nav slides in, max-w constraint, 3-column grids.</p></div>
+    <div class="card"><div class="card-icon pink">🖥️</div><h3>Desktop XL</h3><p>1280px+. Wider sidebar, 4-column dashboards, expanded spacing.</p></div>
+  </div>
+
+  <h3 style="font-size:18px; margin:48px 0 18px; font-weight:600;">Component patterns</h3>
+  <div class="grid-3">
+    <div class="card"><h3>Cards</h3><p>rounded-2xl, bg-secondary, subtle border, soft shadow</p></div>
+    <div class="card"><h3>Buttons</h3><p>rounded-xl, font-medium, hover/active transitions</p></div>
+    <div class="card"><h3>Inputs</h3><p>rounded-xl, bg-tertiary, focus ring with --border-focus</p></div>
+    <div class="card"><h3>Modals</h3><p>Centered with backdrop blur; slide-up on mobile</p></div>
+    <div class="card"><h3>Toasts</h3><p>Sonner. Top-right desktop, top-center mobile</p></div>
+    <div class="card"><h3>Animations</h3><p>Framer Motion. Confetti, level-up, page transitions, skeleton loads</p></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  TECH STACK  ───────────────────────── -->
+<section id="stack" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Technology</span>
+    <h2>Modern, production-grade, no-shortcuts stack.</h2>
+    <p>
+      Every layer chosen for type safety, edge performance, and operational simplicity. Strict TypeScript end-to-end. No legacy debt.
+    </p>
+  </div>
+
+  <h3 style="font-size:16px; color:var(--text-secondary); margin-bottom:14px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">Frontend</h3>
+  <div class="stack-grid" style="margin-bottom:32px;">
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Next.js 16</div><div class="tech-role">App Router · RSC · Turbopack</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">React 19</div><div class="tech-role">Server Components · Suspense streaming</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">TypeScript 5.9</div><div class="tech-role">Strict mode, no `any` allowed</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Tailwind CSS 4</div><div class="tech-role">CSS-first config, OKLCH colors</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">shadcn/ui</div><div class="tech-role">zinc base, radix-ui primitives</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Framer Motion 12</div><div class="tech-role">Page transitions, celebrations</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Recharts 3</div><div class="tech-role">Fairness, trends, breakdowns</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">React Hook Form</div><div class="tech-role">+ Zod resolver for validation</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">TanStack Query 5</div><div class="tech-role">Server state, cache, real-time</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Zustand</div><div class="tech-role">Client state — household, timer, UI</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Sonner</div><div class="tech-role">Toast notifications</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">Lucide Icons</div><div class="tech-role">1,000+ tree-shaken icons</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">next-themes</div><div class="tech-role">Dark default + light mode</div></div></div>
+    <div class="tech"><span class="tech-dot indigo"></span><div><div class="tech-name">date-fns 4</div><div class="tech-role">Locale-aware date utilities</div></div></div>
+  </div>
+
+  <h3 style="font-size:16px; color:var(--text-secondary); margin-bottom:14px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">Backend &amp; Data</h3>
+  <div class="stack-grid" style="margin-bottom:32px;">
+    <div class="tech"><span class="tech-dot success"></span><div><div class="tech-name">Supabase</div><div class="tech-role">Postgres · Auth · Storage · Realtime · Edge Functions</div></div></div>
+    <div class="tech"><span class="tech-dot success"></span><div><div class="tech-name">PostgreSQL</div><div class="tech-role">Row-Level Security on every table</div></div></div>
+    <div class="tech"><span class="tech-dot success"></span><div><div class="tech-name">@supabase/ssr</div><div class="tech-role">Cookie-based session in Next 16</div></div></div>
+    <div class="tech"><span class="tech-dot success"></span><div><div class="tech-name">Supabase Realtime</div><div class="tech-role">WebSocket channels per household</div></div></div>
+    <div class="tech"><span class="tech-dot success"></span><div><div class="tech-name">Zod 4</div><div class="tech-role">Input validation on every API route</div></div></div>
+    <div class="tech"><span class="tech-dot success"></span><div><div class="tech-name">Cron endpoints</div><div class="tech-role">6 scheduled jobs, CRON_SECRET protected</div></div></div>
+  </div>
+
+  <h3 style="font-size:16px; color:var(--text-secondary); margin-bottom:14px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">Payments &amp; Billing</h3>
+  <div class="stack-grid" style="margin-bottom:32px;">
+    <div class="tech"><span class="tech-dot warning"></span><div><div class="tech-name">Stripe 20</div><div class="tech-role">Subscriptions, Customer Portal, webhooks</div></div></div>
+    <div class="tech"><span class="tech-dot warning"></span><div><div class="tech-name">Stripe Checkout</div><div class="tech-role">Hosted, PCI-compliant by Stripe</div></div></div>
+    <div class="tech"><span class="tech-dot warning"></span><div><div class="tech-name">Webhook signature verification</div><div class="tech-role">Replay-safe via service-role client</div></div></div>
+  </div>
+
+  <h3 style="font-size:16px; color:var(--text-secondary); margin-bottom:14px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">AI</h3>
+  <div class="stack-grid" style="margin-bottom:32px;">
+    <div class="tech"><span class="tech-dot violet"></span><div><div class="tech-name">OpenAI GPT-4o</div><div class="tech-role">Default vision provider</div></div></div>
+    <div class="tech"><span class="tech-dot violet"></span><div><div class="tech-name">Anthropic Claude</div><div class="tech-role">Selectable per household</div></div></div>
+    <div class="tech"><span class="tech-dot violet"></span><div><div class="tech-name">Cost tracking</div><div class="tech-role">Per-verification cents tracked, household cap</div></div></div>
+    <div class="tech"><span class="tech-dot violet"></span><div><div class="tech-name">Graceful fallback</div><div class="tech-role">AI failure → manual approval path</div></div></div>
+  </div>
+
+  <h3 style="font-size:16px; color:var(--text-secondary); margin-bottom:14px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;">Auth, Messaging, Mobile</h3>
+  <div class="stack-grid" style="margin-bottom:32px;">
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">@simplewebauthn</div><div class="tech-role">Passkeys: server + browser packages</div></div></div>
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">Web Push (VAPID)</div><div class="tech-role">Browser push notifications</div></div></div>
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">Resend</div><div class="tech-role">Transactional email</div></div></div>
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">Capacitor 6</div><div class="tech-role">iOS + Android native wrapper</div></div></div>
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">Serwist</div><div class="tech-role">Service worker, precaching, share target</div></div></div>
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">browser-image-compression</div><div class="tech-role">Client-side compression before upload</div></div></div>
+    <div class="tech"><span class="tech-dot"></span><div><div class="tech-name">qrcode.react</div><div class="tech-role">Household invite QR codes</div></div></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  ARCHITECTURE  ───────────────────────── -->
+<section id="architecture" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Architecture</span>
+    <h2>One source of truth. Three clients. Zero data drift.</h2>
+    <p>Server-rendered Next.js with edge middleware, Postgres with row-level security as the authoritative store, and Capacitor wrapping the same URL for native iOS &amp; Android.</p>
+  </div>
+
+  <div class="arch-diagram">
+    <div class="arch-layer">
+      <div class="arch-layer-title">📱 Native shells</div>
+      <div class="arch-row">
+        <div class="arch-box">iOS (Capacitor)</div>
+        <div class="arch-box">Android (Capacitor)</div>
+        <div class="arch-box">PWA (installable)</div>
+        <div class="arch-box">Web (browser)</div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">↓</div>
+
+    <div class="arch-layer">
+      <div class="arch-layer-title">🌐 Edge / Proxy</div>
+      <div class="arch-row">
+        <div class="arch-box primary">src/proxy.ts (auth + household + security headers + CSP)</div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">↓</div>
+
+    <div class="arch-layer">
+      <div class="arch-layer-title">⚡ Next.js 16 (App Router · RSC streaming · Turbopack)</div>
+      <div class="arch-row">
+        <div class="arch-box">36 pages</div>
+        <div class="arch-box">26 API routes</div>
+        <div class="arch-box">6 cron endpoints</div>
+        <div class="arch-box">Service Worker (Serwist)</div>
+      </div>
+      <div class="arch-row" style="margin-top:8px;">
+        <div class="arch-box secondary">React Query · Zustand · React Hook Form · Framer Motion</div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">↓</div>
+
+    <div class="arch-layer">
+      <div class="arch-layer-title">🗄️ Data &amp; Real-time</div>
+      <div class="arch-row">
+        <div class="arch-box primary">Postgres + RLS</div>
+        <div class="arch-box primary">Supabase Auth</div>
+        <div class="arch-box primary">Supabase Storage (3 buckets)</div>
+        <div class="arch-box primary">Supabase Realtime channels</div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">↓ external integrations</div>
+
+    <div class="arch-layer">
+      <div class="arch-layer-title">🔌 Third-party services</div>
+      <div class="arch-row">
+        <div class="arch-box">Stripe (subscriptions + webhooks)</div>
+        <div class="arch-box">OpenAI / Anthropic (vision)</div>
+        <div class="arch-box">Resend (transactional email)</div>
+        <div class="arch-box">Web Push (VAPID)</div>
+        <div class="arch-box">Venmo / PayPal / Cash App (deep links)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:32px;">
+    <div class="card">
+      <div class="card-icon indigo">🗄️</div>
+      <h3>Postgres-native</h3>
+      <p>One Supabase project, ~30 tables, RLS policies enforce permissions at the database layer. Triggers handle activity-feed events, point awards, and milestone detection atomically.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon cyan">⚡</div>
+      <h3>Real-time first</h3>
+      <p>Activity feed, assignment status, approval queue, shopping lists, comments — all subscribe to Postgres WAL via Supabase Realtime channels scoped to household.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon success">📦</div>
+      <h3>Edge-ready</h3>
+      <p>Proxy runs on the edge runtime. Pages stream RSC payloads. Service worker precaches the shell — first paint stays fast even on flaky mobile networks.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  SECURITY  ───────────────────────── -->
+<section id="security" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Security &amp; compliance</span>
+    <h2>Production-grade hardening on day one.</h2>
+    <p>App Store-ready privacy posture. Defense-in-depth from edge headers down to database-level RLS.</p>
+  </div>
+
+  <ul class="check-list">
+    <li><strong>Row-Level Security</strong> on every Postgres table. The database itself enforces "users can only see their household's data." No app-layer bypass possible.</li>
+    <li><strong>HSTS + preload</strong> with 2-year max-age. Every response forces HTTPS, includes subdomains.</li>
+    <li><strong>Content-Security-Policy</strong> with strict default-src 'self', allow-list for Stripe + Supabase only.</li>
+    <li><strong>X-Frame-Options: DENY</strong> — no clickjacking via iframe embedding.</li>
+    <li><strong>Permissions-Policy</strong> blocks microphone &amp; geolocation. Camera enabled for self only (photo proof).</li>
+    <li><strong>Referrer-Policy: strict-origin-when-cross-origin</strong> — protects user privacy on outbound links.</li>
+    <li><strong>WebAuthn / passkeys</strong> — biometric login. No password-reuse risk.</li>
+    <li><strong>Webhook signature verification</strong> — Stripe + Supabase webhooks rejected if signature invalid.</li>
+    <li><strong>CRON_SECRET-protected cron endpoints</strong> — only the scheduler can trigger background jobs.</li>
+    <li><strong>Service-role isolation</strong> — admin DB writes never run in client code, only on the server.</li>
+    <li><strong>Zod validation</strong> on every API input. Type-narrow at the boundary.</li>
+    <li><strong>Signed URLs (60s TTL)</strong> for private photo storage — proof &amp; reference photos.</li>
+    <li><strong>Stripe Checkout / Customer Portal</strong> — card data never touches our servers. PCI scope minimized.</li>
+    <li><strong>Account deletion flow</strong> — CCPA / GDPR / Apple App Store §5.1.1(v) compliant.</li>
+    <li><strong>Email confirmation enforced</strong> — unverified accounts can't perform sensitive actions.</li>
+    <li><strong>Path-scoped storage</strong> — every uploaded file at `{household_id}/...` so RLS-equivalent isolation applies.</li>
+  </ul>
+</section>
+
+<!-- ─────────────────────────  PWA / NATIVE  ───────────────────────── -->
+<section id="mobile" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">PWA &amp; native mobile</span>
+    <h2>Install on home screen. Or ship to the App Stores.</h2>
+    <p>Built mobile-first from the ground up. PWA-installable today; Capacitor wraps the same codebase for iOS &amp; Android native distribution.</p>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-icon indigo">📲</div>
+      <h3>PWA installable</h3>
+      <p>Add-to-Home-Screen prompts on iOS &amp; Android. Standalone display mode. Custom splash + theme color.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon cyan">🔄</div>
+      <h3>Offline-capable</h3>
+      <p>Serwist service worker precaches app shell + static assets. NetworkFirst for API calls with cache fallback.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon success">🍎</div>
+      <h3>App Store ready</h3>
+      <p>Capacitor 6 native shell. iOS bundle ID, Android package, splash screens, push entitlements all configured.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon warning">🤖</div>
+      <h3>Play Store ready</h3>
+      <p>Android adaptive icon, maskable variants, foreground notification entitlement, FCM push channel.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon violet">🔗</div>
+      <h3>Share Target</h3>
+      <p>"Share to ManyHandz" from any app → AI parses into shopping items / tasks / chores.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon pink">⚡</div>
+      <h3>App shortcuts</h3>
+      <p>Long-press the home icon: Today, Fairness, Shopping jumps. Configured in manifest.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  PRICING  ───────────────────────── -->
+<section id="pricing" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Subscription model</span>
+    <h2>One plan. Every feature. No surprises.</h2>
+    <p>Free 14-day trial — no credit card required. Subscribe to keep going.</p>
+  </div>
+
+  <div class="pricing">
+    <div class="price-card">
+      <div class="price-name">Monthly</div>
+      <div class="price-amount"><sup>$</sup>9.99<span class="price-period">/mo</span></div>
+      <ul class="mode-features" style="margin-top:24px;">
+        <li>Unlimited household members</li>
+        <li>Unlimited chores &amp; assignments</li>
+        <li>AI photo verification</li>
+        <li>Auto-rotation &amp; fairness</li>
+        <li>Gamification &amp; rewards</li>
+        <li>Goals &amp; competitions</li>
+        <li>Real-time sync</li>
+        <li>Push &amp; email notifications</li>
+        <li>Data export</li>
+        <li>Priority support</li>
+      </ul>
+    </div>
+    <div class="price-card featured">
+      <div class="price-name">Annual</div>
+      <div class="price-amount"><sup>$</sup>99.99<span class="price-period">/yr</span></div>
+      <div class="price-save">Save ~17% — get 2 months free</div>
+      <ul class="mode-features" style="margin-top:24px;">
+        <li>Everything in Monthly</li>
+        <li>Annual billing discount</li>
+        <li>Priority feature requests</li>
+        <li>Early access to new features</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="text-align:center; margin-top:36px; color:var(--text-muted); font-size:13px;">
+    14-day trial · No card required · Cancel anytime in Stripe Customer Portal · Both households earn 1 free month via referral
+  </div>
+</section>
+
+<!-- ─────────────────────────  DATA MODEL  ───────────────────────── -->
+<section id="data" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">Data model</span>
+    <h2>~30 tables. Every constraint enforced in Postgres.</h2>
+    <p>Normalized for integrity. RLS-protected for security. Optimized indexes for the queries that matter.</p>
+  </div>
+
+  <div class="grid-4">
+    <div class="card"><div class="card-icon indigo">👤</div><h3>Identity</h3><ul><li>profiles</li><li>households</li><li>members</li><li>webauthn_credentials</li><li>webauthn_challenges</li></ul></div>
+    <div class="card"><div class="card-icon cyan">🧹</div><h3>Chores</h3><ul><li>chores</li><li>chore_categories</li><li>chore_bundles</li><li>chore_bundle_chores</li><li>rotation_groups</li></ul></div>
+    <div class="card"><div class="card-icon success">📋</div><h3>Assignments</h3><ul><li>assignments</li><li>completions</li><li>ai_verifications</li><li>snooze_requests</li><li>assignment_comments</li></ul></div>
+    <div class="card"><div class="card-icon warning">🎮</div><h3>Gamification</h3><ul><li>achievements</li><li>custom_badges</li><li>challenges</li><li>competitions</li><li>activity_feed</li></ul></div>
+    <div class="card"><div class="card-icon pink">🎁</div><h3>Rewards / Goals</h3><ul><li>rewards</li><li>reward_redemptions</li><li>goals</li><li>goal_contributions</li></ul></div>
+    <div class="card"><div class="card-icon violet">💸</div><h3>Settle Up</h3><ul><li>settlements</li><li>point_transfers</li></ul></div>
+    <div class="card"><div class="card-icon danger">🛒</div><h3>Shopping / Tasks</h3><ul><li>shopping_lists</li><li>shopping_items</li><li>quick_tasks</li></ul></div>
+    <div class="card"><div class="card-icon indigo">💬</div><h3>Communication</h3><ul><li>polls</li><li>poll_votes</li><li>announcements</li><li>push_subscriptions</li></ul></div>
+    <div class="card"><div class="card-icon cyan">💳</div><h3>Billing</h3><ul><li>subscriptions</li><li>referral_codes</li><li>referrals</li></ul></div>
+    <div class="card"><div class="card-icon success">📊</div><h3>Analytics</h3><ul><li>weekly_reports</li><li>health_scores</li><li>milestones</li></ul></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  ROADMAP  ───────────────────────── -->
+<section id="roadmap" class="container">
+  <div class="section-header center">
+    <span class="section-eyebrow">What's next</span>
+    <h2>Shipped, shipping, and on deck.</h2>
+    <p>Everything in the "Now" column is in code today. "Next" is what's queued for the post-launch wave.</p>
+  </div>
+
+  <div class="roadmap">
+    <div class="roadmap-item">
+      <div class="roadmap-stage">Shipped — now</div>
+      <div class="roadmap-title">Web + PWA</div>
+      <div class="roadmap-desc">36 pages, 26 APIs, full feature catalog. Real-time sync. Service worker. Share target.</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-stage">Shipped — now</div>
+      <div class="roadmap-title">AI photo verification</div>
+      <div class="roadmap-desc">GPT-4o + Claude. Reference-photo match scoring. Auto-approve / flag / reject thresholds. Cost cap.</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-stage">Shipped — now</div>
+      <div class="roadmap-title">Mode-aware UX engine</div>
+      <div class="roadmap-desc">Family vs Roommate. Adding modes is one config file.</div>
+    </div>
+
+    <div class="roadmap-item next">
+      <div class="roadmap-stage">Next — pre-launch</div>
+      <div class="roadmap-title">iOS App Store submission</div>
+      <div class="roadmap-desc">Capacitor wrap, Sign in with Apple, RevenueCat for IAP, TestFlight, screenshots.</div>
+    </div>
+    <div class="roadmap-item next">
+      <div class="roadmap-stage">Next — pre-launch</div>
+      <div class="roadmap-title">Google Play submission</div>
+      <div class="roadmap-desc">FCM push, Play Console internal track, adaptive icons.</div>
+    </div>
+    <div class="roadmap-item next">
+      <div class="roadmap-stage">Next — pre-launch</div>
+      <div class="roadmap-title">Production deploy</div>
+      <div class="roadmap-desc">Vercel / Render hosting, custom domain, monitoring dashboards.</div>
+    </div>
+
+    <div class="roadmap-item future">
+      <div class="roadmap-stage">Future</div>
+      <div class="roadmap-title">Office mode</div>
+      <div class="roadmap-desc">Cleaning rota for workplaces. Manager + Colleague roles. Already schemaed; UI unlocked when ready.</div>
+    </div>
+    <div class="roadmap-item future">
+      <div class="roadmap-stage">Future</div>
+      <div class="roadmap-title">Multi-language</div>
+      <div class="roadmap-desc">Spanish, French, Portuguese, German first. next-intl integration.</div>
+    </div>
+    <div class="roadmap-item future">
+      <div class="roadmap-stage">Future</div>
+      <div class="roadmap-title">Apple Watch + Wear OS</div>
+      <div class="roadmap-desc">Quick-complete from wrist. Streak glance, today's chores.</div>
+    </div>
+    <div class="roadmap-item future">
+      <div class="roadmap-stage">Future</div>
+      <div class="roadmap-title">Voice assistant skills</div>
+      <div class="roadmap-desc">"Hey Siri, mark dishes done." Alexa, Google Home skills.</div>
+    </div>
+    <div class="roadmap-item future">
+      <div class="roadmap-stage">Future</div>
+      <div class="roadmap-title">Smart home triggers</div>
+      <div class="roadmap-desc">HomeKit / SmartThings: door sensor closes → "Take out trash" assignment fired.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────  CLOSING  ───────────────────────── -->
+<section class="container">
+  <div class="callout">
+    <h3>Ready for the App Store. Ready for investors. Ready for households everywhere.</h3>
+    <p>
+      Built in production-grade TypeScript on the latest Next 16 + React 19 + Supabase stack.
+      36 pages, 90+ components, real-time sync, AI verification, mobile-native packaging — all done.
+      The remaining work is deployment, App Store submission, and growth.
+    </p>
+  </div>
+</section>
+
+<footer class="container">
+  <p>ManyHandz · Many hands make light work.</p>
+  <p>Comprehensive product &amp; technology overview · Generated 2026-05-28</p>
+  <p>For investor and stakeholder reference</p>
+</footer>
+
+</body>
+</html>
