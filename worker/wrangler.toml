@@ -3,6 +3,15 @@ main = "index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Custom domain — the public face of the app (web + API + auth callbacks). manyhandz.io is an
+# active zone in the same Cloudflare account; wrangler provisions the cert + DNS on deploy.
+routes = [{ pattern = "manyhandz.io", custom_domain = true }]
+
+# Plain vars. ENVIRONMENT=development unlocks dev-only routes (/api/dev/*), email previews, and the
+# readiness doctor's /api/dev/health integrity probe during build-out. Omit/flip for production.
+[vars]
+ENVIRONMENT = "development"
+
 # Static web assets (the Expo web export → ../dist, written by `npm run export:web` at the
 # app root). Unmatched routes fall back to index.html so the React Native Web build's
 # client-side routing works on deep links / refresh.
@@ -22,7 +31,7 @@ crons = ["0 */6 * * *"]
 # Rate limiting — fixed-window abuse caps on the expensive routes (worker/middleware/rate-limit.ts).
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
-id = "ab3b39cd687d45ee866b1df6917fd0f3"
+id = "f96e2c56b55d4ec0988636f06a63ca9e"
 
 # Media uploads (worker/routes/media.ts — answers 501 until this is enabled).
 # R2 needs one-time dashboard enablement → then: npx wrangler r2 bucket create manyhandz-media,
