@@ -55,8 +55,8 @@ export const palette = {
     card: '#111726',
     background: '#0a0e1a',
     accent: '#262f45',
-    primary: '#6366f1',
-    brand: '#828df8',
+    primary: '#ff6b4a',
+    brand: '#ff8a70',
     success: '#22c55e',
     warning: '#f59e0b',
     destructive: '#ef4444',
@@ -66,7 +66,7 @@ export const palette = {
     /** Elevation shadow (FAB, raised surfaces). Black in both schemes by design — see theme-guard.test.ts. */
     shadow: '#000000',
     /** Decorative brand gradient stops (hero surfaces, banners). */
-    brandGradient: ['#6366f1', '#a855f7'] as [string, string],
+    brandGradient: ['#ff6b4a', '#ffe44a'] as [string, string],
   },
   light: {
     foreground: '#0f172a',
@@ -75,8 +75,8 @@ export const palette = {
     card: '#ffffff',
     background: '#f8fafc',
     accent: '#e2e8f0',
-    primary: '#6366f1',
-    brand: '#6366f1',
+    primary: '#ff6b4a',
+    brand: '#ff6b4a',
     success: '#16a34a',
     warning: '#d97706',
     destructive: '#ef4444',
@@ -86,7 +86,7 @@ export const palette = {
     /** Elevation shadow (FAB, raised surfaces). Black in both schemes by design — see theme-guard.test.ts. */
     shadow: '#000000',
     /** Decorative brand gradient stops (hero surfaces, banners). */
-    brandGradient: ['#6366f1', '#a855f7'] as [string, string],
+    brandGradient: ['#ff6b4a', '#ffe44a'] as [string, string],
   },
 }
 

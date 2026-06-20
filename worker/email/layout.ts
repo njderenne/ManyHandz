@@ -5,7 +5,7 @@ import { APP_CONFIG } from '@/lib/config/app'
  * theme (the email convention). The accent should match the app's brand color (kept in sync
  * manually — emails render server-side and can't read the RN theme).
  */
-const BRAND = '#6366f1'
+const BRAND = '#ff6b4a'
 
 export type EmailContent = {
   heading: string

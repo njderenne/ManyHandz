@@ -20,8 +20,8 @@
     --muted-foreground: 88 104 127;
     --border: 226 232 240;
     --input: 226 232 240;
-    --ring: 99 102 241;
-    --primary: 99 102 241;
+    --ring: 255 107 74;
+    --primary: 255 107 74;
     --primary-foreground: 255 255 255;
     --secondary: 241 245 249;
     --secondary-foreground: 15 23 42;
@@ -44,8 +44,8 @@
     --muted-foreground: 154 165 184;
     --border: 35 43 61;
     --input: 35 43 61;
-    --ring: 99 102 241;
-    --primary: 99 102 241;
+    --ring: 255 107 74;
+    --primary: 255 107 74;
     --primary-foreground: 255 255 255;
     --secondary: 28 35 51;
     --secondary-foreground: 247 249 252;
