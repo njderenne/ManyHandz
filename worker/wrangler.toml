@@ -33,12 +33,10 @@ crons = ["0 */6 * * *"]
 binding = "RATE_LIMIT"
 id = "f96e2c56b55d4ec0988636f06a63ca9e"
 
-# Media uploads (worker/routes/media.ts — answers 501 until this is enabled).
-# R2 needs one-time dashboard enablement → then: npx wrangler r2 bucket create manyhandz-media,
-# uncomment, deploy.
-# [[r2_buckets]]
-# binding = "MEDIA"
-# bucket_name = "manyhandz-media"
+# Media uploads (worker/routes/media.ts) — avatars, chore reference photos, before/after proof.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "manyhandz-media"
 
 # --- Provisioned per-app by the factory (Phase 2+) ---
 # [[d1_databases]]          # simple/experiment tier
