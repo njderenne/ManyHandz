@@ -1,0 +1,900 @@
+import { relations, sql } from 'drizzle-orm'
+import {
+  pgTable,
+  pgEnum,
+  text,
+  timestamp,
+  boolean,
+  jsonb,
+  integer,
+  index,
+  uniqueIndex,
+  primaryKey,
+  check,
+} from 'drizzle-orm/pg-core'
+
+/**
+ * Drizzle schema — the baseline multi-tenant chassis.
+ *
+ * Tenancy: the `organization`/`member`/`invitation` tables are owned by Better-Auth's
+ * organization plugin (orgs, roles, invites, active-org switching). Display-aliased per app via
+ * APP_CONFIG.tenant. Tenant isolation is enforced by app-layer authorization — every query is
+ * org/user-scoped through the worker's query layer, never the database (see APPFACTORY_STACK.md §6).
+ *
+ * Auth tables (user/session/account/verification/passkey) follow Better-Auth's shape so its
+ * Drizzle adapter can own them. Property keys are camelCase (Better-Auth field names); DB
+ * columns are snake_case.
+ */
+
+export const subscriptionTierEnum = pgEnum('subscription_tier', ['FREE', 'STANDARD', 'PREMIUM'])
+export const subscriptionStatusEnum = pgEnum('subscription_status', [
+  'trialing',
+  'active',
+  'past_due',
+  'canceled',
+  'unpaid',
+])
+
+// --- Identity (Better-Auth) ---
+
+export const user = pgTable('user', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const session = pgTable('session', {
+  id: text('id').primaryKey(),
+  token: text('token').notNull().unique(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  // Set by the organization plugin when a member switches active org.
+  activeOrganizationId: text('active_organization_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const account = pgTable('account', {
+  id: text('id').primaryKey(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const verification = pgTable('verification', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const passkey = pgTable('passkey', {
+  id: text('id').primaryKey(),
+  name: text('name'),
+  publicKey: text('public_key').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  credentialID: text('credential_id').notNull(),
+  counter: integer('counter').notNull(),
+  deviceType: text('device_type').notNull(),
+  backedUp: boolean('backed_up').notNull(),
+  transports: text('transports'),
+  aaguid: text('aaguid'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// --- Tenant (Better-Auth organization plugin) ---
+
+export const organization = pgTable('organization', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  logo: text('logo'),
+  metadata: text('metadata'),
+  /** Tenant flavor — 'team' (default) or 'personal' (auto-provisioned solo org); apps add kinds. */
+  kind: text('kind').notNull().default('team'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+  // Billing — managed by Stripe webhooks via Drizzle (not Better-Auth). Phase 5.
+  subscriptionTier: subscriptionTierEnum('subscription_tier').notNull().default('FREE'),
+  subscriptionStatus: subscriptionStatusEnum('subscription_status'),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+})
+
+export const member = pgTable(
+  'member',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('member'),
+    /** Optional per-member display name within this org (falls back to user.name). */
+    displayName: text('display_name'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index('member_org_idx').on(t.organizationId), index('member_user_idx').on(t.userId)],
+)
+
+export const invitation = pgTable(
+  'invitation',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role'),
+    status: text('status').notNull().default('pending'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    inviterId: text('inviter_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (t) => [
+    index('invitation_org_idx').on(t.organizationId),
+    index('invitation_email_idx').on(t.email),
+  ],
+)
+
+// --- Cross-cutting: notifications + audit log (present on every app) ---
+
+export const notification = pgTable(
+  'notification',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    /** Deep-link target — the row this notification is about (same convention as activity_log). */
+    entityType: text('entity_type'),
+    entityId: text('entity_id'),
+    isRead: boolean('is_read').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index('notification_user_idx').on(t.userId, t.isRead)],
+)
+
+// Expo push tokens — one row per device. The Worker sends pushes via Expo's push service
+// (exp.host); tokens are upserted on registration and owned by the session user.
+export const pushToken = pgTable(
+  'push_token',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    token: text('token').notNull().unique(),
+    platform: text('platform'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('push_token_user_idx').on(t.userId)],
+)
+
+export const activityLog = pgTable(
+  'activity_log',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id'),
+    action: text('action').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('activity_org_idx').on(t.organizationId, t.createdAt)],
+)
+
+// --- Relations ---
+
+export const userRelations = relations(user, ({ many }) => ({
+  memberships: many(member),
+  notifications: many(notification),
+  pushTokens: many(pushToken),
+}))
+
+export const pushTokenRelations = relations(pushToken, ({ one }) => ({
+  user: one(user, { fields: [pushToken.userId], references: [user.id] }),
+}))
+
+export const organizationRelations = relations(organization, ({ many }) => ({
+  members: many(member),
+  invitations: many(invitation),
+  notifications: many(notification),
+  activity: many(activityLog),
+}))
+
+export const memberRelations = relations(member, ({ one }) => ({
+  organization: one(organization, {
+    fields: [member.organizationId],
+    references: [organization.id],
+  }),
+  user: one(user, { fields: [member.userId], references: [user.id] }),
+}))
+
+export const invitationRelations = relations(invitation, ({ one }) => ({
+  organization: one(organization, {
+    fields: [invitation.organizationId],
+    references: [organization.id],
+  }),
+  inviter: one(user, { fields: [invitation.inviterId], references: [user.id] }),
+}))
+
+// --- Standard plumbing: present on every app (see builder/MINT.md §5 conventions) ---
+
+/**
+ * Server-side user settings — what the SERVER must know about a user (timezone for scheduled
+ * reminders, locale, onboarding state, marketing consent). Device-local taste (haptics, theme)
+ * stays in the client prefs store; per-app extras go in `extra`.
+ */
+export const userSettings = pgTable('user_settings', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  timezone: text('timezone'), // IANA, e.g. 'America/Chicago'
+  locale: text('locale'), // BCP-47, e.g. 'en-US'
+  marketingOptIn: boolean('marketing_opt_in').notNull().default(false),
+  onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
+  /** Idempotency stamp — the lifecycle welcome email fires exactly once per account. */
+  welcomeEmailSentAt: timestamp('welcome_email_sent_at', { withTimezone: true }),
+  /** Per-category notification opt-ins, e.g. { reminders: 'weekly', digest: false }. */
+  notificationPrefs: jsonb('notification_prefs').$type<Record<string, unknown>>(),
+  extra: jsonb('extra').$type<Record<string, unknown>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+})
+
+/** File registry for R2-backed uploads — one row per stored object (the key is the R2 object key). */
+export const media = pgTable(
+  'media',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    uploaderId: text('uploader_id').references(() => user.id, { onDelete: 'set null' }),
+    key: text('key').notNull().unique(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    alt: text('alt'),
+    /** Optional user-facing file name (document vaults) — distinct from the opaque R2 key. */
+    name: text('name'),
+    /** Per-app category, e.g. 'receipt' | 'document' | 'progress_photo'. */
+    kind: text('kind'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('media_org_idx').on(t.organizationId, t.createdAt)],
+)
+
+/**
+ * Processed external webhook events — the idempotency ledger. Providers (Stripe, RevenueCat)
+ * RETRY deliveries; insert (provider, eventId) with onConflictDoNothing and skip the event when
+ * the insert returns no row. Without this, a retried billing event can double-apply.
+ */
+export const webhookEvent = pgTable(
+  'webhook_event',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    provider: text('provider').notNull(), // 'stripe' | 'revenuecat' | …
+    eventId: text('event_id').notNull(),
+    type: text('type'),
+    processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('webhook_event_provider_event_idx').on(t.provider, t.eventId)],
+)
+
+/** In-app feedback / support requests — every shipped app needs a feedback channel on day one. */
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').references(() => organization.id, {
+      onDelete: 'set null',
+    }),
+    userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+    category: text('category'), // 'bug' | 'idea' | 'other' | per-app
+    message: text('message').notNull(),
+    appVersion: text('app_version'),
+    platform: text('platform'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('feedback_created_idx').on(t.createdAt)],
+)
+
+/** Referral codes — the server side of lib/referrals (codes are meaningless without redemption). */
+export const referral = pgTable(
+  'referral',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    code: text('code').notNull().unique(),
+    ownerUserId: text('owner_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    redeemedByUserId: text('redeemed_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('referral_owner_idx').on(t.ownerUserId),
+    // Race-proof backstops for the redeem route's check-then-act (no transactions on the HTTP
+    // driver): a user can redeem at most ONE code ever, and hold at most ONE open code at a time.
+    // The route maps 23505 violations onto its friendly 400s; these indexes are the source of truth.
+    uniqueIndex('referral_redeemer_once_idx')
+      .on(t.redeemedByUserId)
+      .where(sql`${t.redeemedByUserId} is not null`),
+    uniqueIndex('referral_one_open_per_owner_idx')
+      .on(t.ownerUserId)
+      .where(sql`${t.redeemedAt} is null`),
+  ],
+)
+
+export const userSettingsRelations = relations(userSettings, ({ one }) => ({
+  user: one(user, { fields: [userSettings.userId], references: [user.id] }),
+}))
+
+export const mediaRelations = relations(media, ({ one }) => ({
+  organization: one(organization, { fields: [media.organizationId], references: [organization.id] }),
+  uploader: one(user, { fields: [media.uploaderId], references: [user.id] }),
+}))
+
+// --- Standard modules: AI, sharing, integrations, moderation, billing, engagement ---
+// Validated across minted apps (Gains, Splitrue) — product tables reference these, never
+// re-create them per app. Vocabulary columns (kind/feature/provider/reason) are TEXT, not enums,
+// so apps extend them without a migration.
+
+/**
+ * AI usage metering — one row per AI call, success or failure. Powers tier quotas (pairs with
+ * worker/entitlements.ts), spend visibility, and failure auditing without combing server logs.
+ */
+export const aiUsageLog = pgTable(
+  'ai_usage_log',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    /** Stable feature key ('complete' | 'stream' | 'vision' | per-app) — TEXT so new features need no migration. */
+    feature: text('feature').notNull(),
+    provider: text('provider').notNull(), // 'anthropic' | 'openai' | 'xai' | …
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    ok: boolean('ok').notNull().default(true),
+    /** Stable failure code when !ok — 'rate_limit' | 'quota_exceeded' | 'provider_error' | 'timeout' | 'invalid_input'. */
+    errorCode: text('error_code'),
+    latencyMs: integer('latency_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('ai_usage_user_idx').on(t.userId, t.createdAt),
+    index('ai_usage_org_idx').on(t.organizationId, t.createdAt),
+  ],
+)
+
+/** AI chat threads — multi-turn assistant conversations. Per-user (private by default); orgId is context, not access. */
+export const aiChatThread = pgTable(
+  'ai_chat_thread',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    organizationId: text('organization_id').references(() => organization.id, { onDelete: 'cascade' }),
+    /** Usually the first user message clipped to ~50 chars; null until the first turn lands. */
+    title: text('title'),
+    /** Bumped on every new message so the thread list sorts by recency for free. */
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ai_chat_thread_user_idx').on(t.userId, t.lastMessageAt)],
+)
+
+/** AI chat messages — the system message is persisted too, so a thread replays exactly. */
+export const aiChatMessage = pgTable(
+  'ai_chat_message',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    threadId: text('thread_id')
+      .notNull()
+      .references(() => aiChatThread.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(), // 'system' | 'user' | 'assistant'
+    content: text('content').notNull(),
+    // Usage + provenance — set on assistant messages only (the user may switch models mid-thread).
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    provider: text('provider'),
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ai_chat_message_thread_idx').on(t.threadId, t.createdAt)],
+)
+
+/**
+ * Public share-link tokens — a random token exposes ONE entity (or a feed, e.g. an iCal URL)
+ * read-only without auth, with expiry/revoke/view-count. entityType+entityId instead of hard FKs
+ * so one table serves every shareable thing. Resolve server-side and return a minimal payload —
+ * never leak the owning row or user identity.
+ */
+export const shareToken = pgTable(
+  'share_token',
+  {
+    token: text('token').primaryKey(), // mint server-side: crypto.randomUUID() or longer
+    organizationId: text('organization_id').references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    entityType: text('entity_type').notNull(), // 'workout_session' | 'calendar_feed' | per-app
+    entityId: text('entity_id'), // null for feed-type tokens
+    /** Optional public display name ("Alex") — shares are anonymous by default. */
+    displayName: text('display_name'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }), // null = never
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    viewCount: integer('view_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('share_token_user_idx').on(t.userId),
+    index('share_token_entity_idx').on(t.entityType, t.entityId),
+  ],
+)
+
+/**
+ * Third-party OAuth/API tokens (wearables, calendars, …) — per-user, because OAuth grants are
+ * between a person and a service. `ciphertext` is a token-cipher envelope
+ * (src/lib/crypto/token-cipher.ts, AAD = userId) — NEVER store raw token JSON.
+ */
+export const providerToken = pgTable(
+  'provider_token',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(), // 'fitbit' | 'strava' | 'google_calendar' | per-app
+    ciphertext: text('ciphertext').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }), // access-token expiry; refresh before this
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    /** Set on disconnect; keep the row briefly so a reconnect can reuse the refresh token. */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex('provider_token_user_provider_idx').on(t.userId, t.provider)],
+)
+
+/** Incremental-sync checkpoint per (user, provider) — health bridges, calendar/mail sync, …. */
+export const syncState = pgTable(
+  'sync_state',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(), // 'apple_health' | 'health_connect' | per-app
+    enabled: boolean('enabled').notNull().default(false),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    /** The provider's incremental cursor (HealthKit anchor, page token, …). */
+    cursor: text('cursor'),
+    scopes: jsonb('scopes').$type<string[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex('sync_state_user_provider_idx').on(t.userId, t.provider)],
+)
+
+/**
+ * UGC abuse reports — App Store Guideline 1.2 REQUIRES report + block in any app surfacing
+ * user-generated content. Target is polymorphic: an entity (post/comment/media/…) and/or a user
+ * (profile/behavior reports). FKs go null when the target is deleted; the audit trail survives.
+ */
+export const report = pgTable(
+  'report',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').references(() => organization.id, { onDelete: 'set null' }),
+    reporterUserId: text('reporter_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    entityType: text('entity_type'),
+    entityId: text('entity_id'),
+    reportedUserId: text('reported_user_id').references(() => user.id, { onDelete: 'set null' }),
+    /** 'spam' | 'harassment' | 'inappropriate' | 'other' — matches REPORT_REASONS in worker/routes/moderation.ts. */
+    reason: text('reason').notNull(),
+    details: text('details'),
+    status: text('status').notNull().default('open'), // 'open' | 'reviewed' | 'actioned' | 'dismissed'
+    reviewerUserId: text('reviewer_user_id').references(() => user.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    actionTaken: text('action_taken'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('report_status_idx').on(t.status, t.createdAt),
+    check('report_has_target', sql`${t.entityId} IS NOT NULL OR ${t.reportedUserId} IS NOT NULL`),
+  ],
+)
+
+/** User blocks — filter blocked users' UGC in queries/hooks (not in SQL policies; see Gains 057 notes). */
+export const userBlock = pgTable(
+  'user_block',
+  {
+    blockerUserId: text('blocker_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    blockedUserId: text('blocked_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.blockerUserId, t.blockedUserId] }),
+    check('user_block_not_self', sql`${t.blockerUserId} <> ${t.blockedUserId}`),
+  ],
+)
+
+/**
+ * Per-provider subscription truth — one row per Stripe subscription / Apple original transaction /
+ * Google purchase token. Webhooks and store server notifications write HERE; a resolver collapses
+ * the rows onto the organization's billing columns (the entitlement CACHE the app reads).
+ * Exists because Apple/Google purchases belong to a USER while entitlements are per-ORG
+ * (decision #9) — and a tenant can hold a Stripe sub (web) and an IAP sub (device) at once.
+ */
+export const subscription = pgTable(
+  'subscription',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** Who made the purchase — store receipts belong to a person (their Apple/Google account). */
+    purchaserUserId: text('purchaser_user_id').references(() => user.id, { onDelete: 'set null' }),
+    provider: text('provider').notNull(), // 'stripe' | 'apple' | 'google'
+    /** Stripe price ID / App Store product ID / Play SKU. */
+    productId: text('product_id').notNull(),
+    tier: subscriptionTierEnum('tier').notNull(),
+    status: subscriptionStatusEnum('status').notNull(),
+    /** Stripe subscription id / Apple original_transaction_id / Google purchase token. */
+    externalId: text('external_id').notNull(),
+    periodStart: timestamp('period_start', { withTimezone: true }),
+    periodEnd: timestamp('period_end', { withTimezone: true }),
+    trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+    canceledAt: timestamp('canceled_at', { withTimezone: true }),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex('subscription_provider_external_idx').on(t.provider, t.externalId),
+    index('subscription_org_idx').on(t.organizationId),
+  ],
+)
+
+/**
+ * Credits/points — APPEND-ONLY ledger; balance = SUM(delta) per (org, user, kind). Never store a
+ * mutable balance (that's how apps double-credit). Integer units: points, or cents for
+ * money-like credits. kind: 'reward_points' | 'referral_credit' | 'promo' | per-app.
+ */
+export const creditLedger = pgTable(
+  'credit_ledger',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** Null = org-wide credit. set null on account deletion so historic sums hold. */
+    userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
+    kind: text('kind').notNull(),
+    delta: integer('delta').notNull(), // signed: positive = earn, negative = spend
+    reason: text('reason'),
+    entityType: text('entity_type'),
+    entityId: text('entity_id'),
+    /** Set for credits from external/retryable events — the unique constraint blocks double-credit. */
+    idempotencyKey: text('idempotency_key').unique(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('credit_ledger_scope_idx').on(t.organizationId, t.userId, t.kind, t.createdAt)],
+)
+
+/** Achievement unlocks — definitions live in code/config; only the unlocks are data (createdAt = unlock time). */
+export const achievementUnlock = pgTable(
+  'achievement_unlock',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    achievementKey: text('achievement_key').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(), // e.g. the value that triggered it
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('achievement_unlock_unique_idx').on(t.organizationId, t.userId, t.achievementKey),
+  ],
+)
+
+/**
+ * Bookmarks/favorites — the universal "save this" primitive. Polymorphic via entityType+entityId
+ * (same convention as notification/report), so ANY domain row is bookmarkable without new tables.
+ * kind distinguishes flavors when an app has more than one ('favorite' default; 'pin', 'watchlist').
+ */
+export const bookmark = pgTable(
+  'bookmark',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    kind: text('kind').notNull().default('favorite'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('bookmark_unique_idx').on(t.organizationId, t.userId, t.entityType, t.entityId, t.kind),
+    index('bookmark_scope_idx').on(t.organizationId, t.userId, t.kind, t.createdAt),
+  ],
+)
+
+/**
+ * Streaks — consecutive-day engagement counters, one row per (org, user, kind). Day boundaries
+ * use lastActivityDate as a YYYY-MM-DD string in the USER'S timezone (user_settings.timezone),
+ * so clock math never breaks streaks across midnights/DST. "Broken" is computed on READ
+ * (lastActivityDate < yesterday), not by a cron — rows never need a reset job.
+ * kind: 'daily' default; per-app vocab ('workout', 'practice', …).
+ */
+export const streak = pgTable(
+  'streak',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('daily'),
+    currentCount: integer('current_count').notNull().default(0),
+    longestCount: integer('longest_count').notNull().default(0),
+    /** YYYY-MM-DD in the user's timezone at the time of the activity. */
+    lastActivityDate: text('last_activity_date'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex('streak_scope_unique_idx').on(t.organizationId, t.userId, t.kind)],
+)
+
+/**
+ * Generic org-scoped calendar — appointments, scheduled workouts, custody days, …. kind/status
+ * vocabularies are per-app; entityType+entityId links an event to the domain row it's about.
+ * All-day events: allDay=true with startsAt at UTC midnight (render via user_settings.timezone).
+ */
+export const calendarEvent = pgTable(
+  'calendar_event',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    kind: text('kind'), // per-app: 'appointment' | 'workout' | 'custody' | …
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    allDay: boolean('all_day').notNull().default(false),
+    location: text('location'),
+    /** Per-app lifecycle, e.g. 'planned' | 'completed' | 'skipped' | 'canceled'. */
+    status: text('status'),
+    entityType: text('entity_type'),
+    entityId: text('entity_id'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index('calendar_event_org_time_idx').on(t.organizationId, t.startsAt)],
+)
+
+/**
+ * Member-to-member messaging — IMMUTABLE rows (no updatedAt; ship no edit/delete routes). That's
+ * required for court-ready/audit messaging and a good default everywhere. threadId partitions
+ * channels ('default' = the org's main channel). Read state lives in message_cursor — one row per
+ * reader per thread — never per-message flags (those only work for two-member tenants).
+ */
+export const message = pgTable(
+  'message',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    threadId: text('thread_id').notNull().default('default'),
+    /** set null — the record survives the sender's account deletion. */
+    senderId: text('sender_id').references(() => user.id, { onDelete: 'set null' }),
+    content: text('content').notNull(),
+    /** Optional attachment — a registry row in media. */
+    mediaId: text('media_id').references(() => media.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('message_org_thread_idx').on(t.organizationId, t.threadId, t.createdAt)],
+)
+
+/** Per-reader read cursor — "unread" = messages newer than lastReadAt in that thread. */
+export const messageCursor = pgTable(
+  'message_cursor',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    threadId: text('thread_id').notNull().default('default'),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('message_cursor_unique_idx').on(t.organizationId, t.userId, t.threadId)],
+)
+
+/** P2P payment handles (pairs with APP_CONFIG.features.peerPayments) — '@venmo', '$cashapp', …. */
+export const paymentHandle = pgTable(
+  'payment_handle',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    method: text('method').notNull(), // 'venmo' | 'cashapp' | 'paypal' | per-app
+    handle: text('handle').notNull(),
+    isPreferred: boolean('is_preferred').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex('payment_handle_user_method_idx').on(t.userId, t.method)],
+)
+
+export const aiChatThreadRelations = relations(aiChatThread, ({ one, many }) => ({
+  user: one(user, { fields: [aiChatThread.userId], references: [user.id] }),
+  messages: many(aiChatMessage),
+}))
+
+export const aiChatMessageRelations = relations(aiChatMessage, ({ one }) => ({
+  thread: one(aiChatThread, { fields: [aiChatMessage.threadId], references: [aiChatThread.id] }),
+}))
+
+export const subscriptionRelations = relations(subscription, ({ one }) => ({
+  organization: one(organization, {
+    fields: [subscription.organizationId],
+    references: [organization.id],
+  }),
+}))
+
+export const calendarEventRelations = relations(calendarEvent, ({ one }) => ({
+  organization: one(organization, {
+    fields: [calendarEvent.organizationId],
+    references: [organization.id],
+  }),
+}))
+
+export const messageRelations = relations(message, ({ one }) => ({
+  organization: one(organization, { fields: [message.organizationId], references: [organization.id] }),
+  sender: one(user, { fields: [message.senderId], references: [user.id] }),
+  attachment: one(media, { fields: [message.mediaId], references: [media.id] }),
+}))
+
+// --- Inferred types (single source of truth for the app) ---
+
+export type User = typeof user.$inferSelect
+export type Session = typeof session.$inferSelect
+export type Organization = typeof organization.$inferSelect
+export type Member = typeof member.$inferSelect
+export type Invitation = typeof invitation.$inferSelect
+export type Notification = typeof notification.$inferSelect
+export type PushToken = typeof pushToken.$inferSelect
+export type ActivityLogEntry = typeof activityLog.$inferSelect
+export type UserSettings = typeof userSettings.$inferSelect
+export type Media = typeof media.$inferSelect
+export type WebhookEvent = typeof webhookEvent.$inferSelect
+export type Feedback = typeof feedback.$inferSelect
+export type Referral = typeof referral.$inferSelect
+export type AiUsageLogEntry = typeof aiUsageLog.$inferSelect
+export type AiChatThread = typeof aiChatThread.$inferSelect
+export type AiChatMessage = typeof aiChatMessage.$inferSelect
+export type ShareToken = typeof shareToken.$inferSelect
+export type ProviderToken = typeof providerToken.$inferSelect
+export type SyncState = typeof syncState.$inferSelect
+export type Report = typeof report.$inferSelect
+export type UserBlock = typeof userBlock.$inferSelect
+export type Subscription = typeof subscription.$inferSelect
+export type CreditLedgerEntry = typeof creditLedger.$inferSelect
+export type AchievementUnlock = typeof achievementUnlock.$inferSelect
+export type Streak = typeof streak.$inferSelect
+export type Bookmark = typeof bookmark.$inferSelect
+export type CalendarEvent = typeof calendarEvent.$inferSelect
+export type Message = typeof message.$inferSelect
+export type MessageCursor = typeof messageCursor.$inferSelect
+export type PaymentHandle = typeof paymentHandle.$inferSelect

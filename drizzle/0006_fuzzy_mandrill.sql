@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "referral_redeemer_once_idx" ON "referral" USING btree ("redeemed_by_user_id") WHERE "referral"."redeemed_by_user_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "referral_one_open_per_owner_idx" ON "referral" USING btree ("owner_user_id") WHERE "referral"."redeemed_at" is null;

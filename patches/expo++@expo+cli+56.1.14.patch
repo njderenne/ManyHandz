@@ -1,0 +1,19 @@
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/start/server/middleware/resolveRuntimeVersionWithExpoUpdatesAsync.js b/node_modules/expo/node_modules/@expo/cli/build/src/start/server/middleware/resolveRuntimeVersionWithExpoUpdatesAsync.js
+index 3d48f89..daec59c 100644
+--- a/node_modules/expo/node_modules/@expo/cli/build/src/start/server/middleware/resolveRuntimeVersionWithExpoUpdatesAsync.js
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/start/server/middleware/resolveRuntimeVersionWithExpoUpdatesAsync.js
+@@ -31,7 +31,13 @@ async function resolveRuntimeVersionWithExpoUpdatesAsync({ projectRoot, platform
+         if (e instanceof _expoUpdatesCli.ExpoUpdatesCLIModuleNotFoundError) {
+             return null;
+         }
+-        throw e;
++        // AppFactory patch: the expo-updates CLI subprocess intermittently dies on Windows with
++        // 0xC0000142 (STATUS_DLL_INIT_FAILED), which otherwise propagates as a manifest error and
++        // surfaces on devices as "Failed to download remote update". Returning null engages the
++        // documented fallback below the call site: runtime version calculated from the config
++        // plugin (correct for explicit runtimeVersion strings, no subprocess involved).
++        debug(`runtimeversion:resolve failed (${e.message}); falling back to config-plugin resolution`);
++        return null;
+     }
+ }
+ 

@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    // Pinned entrypoint: the bare package resolves to the OLDEST compat date, where e.g.
+    // FormData.get() can't return File. 2023-07-01 is the newest shipped entrypoint and matches
+    // the runtime semantics of wrangler.toml's compatibility_date.
+    "types": ["@cloudflare/workers-types/2023-07-01"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../src/*"]
+    }
+  },
+  "include": ["."]
+}

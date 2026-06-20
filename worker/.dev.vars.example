@@ -1,0 +1,36 @@
+# Local Worker secrets for `wrangler dev` — copy to `.dev.vars` and fill in real values.
+# `.dev.vars` is gitignored and must NEVER be committed; this example file is the committed
+# documentation of its shape. Deployed environments use `npx wrangler secret put <NAME>` instead
+# (see the secrets matrix in builder/MINT.md and the bindings in worker/env.ts).
+
+# --- Always required (Worker warns loudly if missing — worker/env.ts) ---
+DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=http://localhost:8787
+
+# --- Email (Resend) — invites, password reset, billing receipts ---
+RESEND_API_KEY=
+EMAIL_FROM=
+
+# --- Social sign-in (optional) ---
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+APPLE_CLIENT_ID=
+APPLE_CLIENT_SECRET=
+
+# --- Billing (Stripe, optional locally) ---
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_STANDARD=
+STRIPE_PRICE_PREMIUM=
+
+# --- AI providers (optional) ---
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+XAI_API_KEY=
+
+# --- Voice (ElevenLabs, optional) ---
+ELEVENLABS_API_KEY=
+
+# Unlocks dev-only routes (/api/dev/email/* previews). Never set in deployed environments.
+ENVIRONMENT=development

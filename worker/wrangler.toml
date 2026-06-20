@@ -1,0 +1,45 @@
+name = "app-template"
+main = "index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static web assets (the Expo web export → ../dist, written by `npm run export:web` at the
+# app root). Unmatched routes fall back to index.html so the React Native Web build's
+# client-side routing works on deep links / refresh.
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
+
+# Cron → the `scheduled` handler in worker/cron.ts (template housekeeping every 6h; minted apps
+# add their reminder/digest jobs there).
+[triggers]
+crons = ["0 */6 * * *"]
+
+# Rate limiting — fixed-window abuse caps on the expensive routes (worker/middleware/rate-limit.ts).
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "ab3b39cd687d45ee866b1df6917fd0f3"
+
+# Media uploads (worker/routes/media.ts — answers 501 until this is enabled).
+# R2 needs one-time dashboard enablement → then: npx wrangler r2 bucket create app-template-media,
+# uncomment, deploy.
+# [[r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "app-template-media"
+
+# --- Provisioned per-app by the factory (Phase 2+) ---
+# [[d1_databases]]          # simple/experiment tier
+# [[durable_objects.bindings]]  # realtime rooms (opt-in)
+#
+# Plain vars (optional): MIN_APP_VERSION — the /api/meta force-update floor, e.g.
+#   [vars]
+#   MIN_APP_VERSION = "0.1.0"
+#   ENVIRONMENT = "development"   # unlocks dev-only routes (/api/dev/email/*); omit in production
+#
+# Secrets (set via `wrangler secret put`):
+#   DATABASE_URL, BETTER_AUTH_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+#   RESEND_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
