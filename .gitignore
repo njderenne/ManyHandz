@@ -36,3 +36,6 @@ credentials/
 *.p12
 *.mobileprovision
 *.key
+
+# Readiness doctor output (regenerated each run)
+SHIP_REPORT.md
