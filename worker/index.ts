@@ -25,6 +25,7 @@ import { eventRoutes } from './routes/events'
 import { messageRoutes } from './routes/messages'
 import { usersRoutes } from './routes/users'
 import { choreRoutes } from './routes/chores'
+import { householdRoutes } from './routes/household'
 import { devHealth } from './routes/dev-health'
 import { EMAIL_PREVIEWS } from './email/templates'
 import { injectSeo } from './seo'
@@ -109,6 +110,8 @@ app.use('/api/organizations/:orgId/events/:id', rateLimit('events', { limit: 60,
 // ManyHandz — chore library writes (create/edit/delete are mutating; reads are uncapped).
 app.use('/api/organizations/:orgId/chores', rateLimit('chores', { limit: 60, windowSeconds: 300 }))
 app.use('/api/organizations/:orgId/chores/:choreId', rateLimit('chores', { limit: 60, windowSeconds: 300 }))
+// Member profile/role writes (the household GET/members reads stay uncapped — useHouseholdMode polls them).
+app.use('/api/organizations/:orgId/members/:memberId', rateLimit('members-write', { limit: 30, windowSeconds: 300 }))
 app.use('/api/users/*', rateLimit('users-public', { limit: 120, windowSeconds: 300 }))
 // Cycle-6 audit: every mutating group gets a cap — paid R2 writes, push fan-out, unbounded
 // inserts, Stripe session creation, thread-create spam, streak-row creation, notification
@@ -167,6 +170,7 @@ app.route('/api/organizations', eventRoutes)
 app.route('/api/organizations', messageRoutes)
 
 // --- ManyHandz product routes (org-scoped; writes gated by the mode permission matrix) ---
+app.route('/api/organizations', householdRoutes)
 app.route('/api/organizations', choreRoutes)
 
 // Public user profiles — session-gated, safe fields only.
