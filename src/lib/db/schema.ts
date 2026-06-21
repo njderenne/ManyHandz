@@ -127,6 +127,27 @@ export const organization = pgTable('organization', {
   stripeSubscriptionId: text('stripe_subscription_id'),
   trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  // --- ManyHandz: household config. `mode` drives the entire UX via src/lib/config/modes.ts;
+  //     the rest are the household policy flags the mode + Settings screen read. ---
+  mode: text('mode').notNull().default('family'), // 'family' | 'roommate' | 'office'
+  inviteCode: text('invite_code').unique(), // 8-char join-by-code / QR code (minted on create)
+  timezone: text('timezone').notNull().default('America/New_York'),
+  requirePhotoProof: boolean('require_photo_proof').notNull().default(false),
+  requireApproval: boolean('require_approval').notNull().default(true),
+  leaderboardVisible: boolean('leaderboard_visible').notNull().default(true),
+  // Two-layer kid gating — the mode matrix grants the base; these are authoritative at runtime
+  // (see canWithHousehold in modes.ts).
+  allowKidGifting: boolean('allow_kid_gifting').notNull().default(true),
+  allowKidChallenges: boolean('allow_kid_challenges').notNull().default(false),
+  allowKidCompetitions: boolean('allow_kid_competitions').notNull().default(true),
+  maxKidCompetitionStakes: integer('max_kid_competition_stakes').notNull().default(50),
+  // AI photo-verification policy (per-household; each chore also opts in individually).
+  aiVerificationEnabled: boolean('ai_verification_enabled').notNull().default(false),
+  aiVerificationProvider: text('ai_verification_provider').notNull().default('openai'),
+  aiAutoApproveThreshold: integer('ai_auto_approve_threshold').notNull().default(85),
+  aiAutoRejectThreshold: integer('ai_auto_reject_threshold').notNull().default(40),
+  aiMonthlyCostCapCents: integer('ai_monthly_cost_cap_cents').notNull().default(500),
+  healthScore: integer('health_score').notNull().default(100),
 })
 
 export const member = pgTable(
@@ -142,6 +163,24 @@ export const member = pgTable(
     role: text('role').notNull().default('member'),
     /** Optional per-member display name within this org (falls back to user.name). */
     displayName: text('display_name'),
+    // --- ManyHandz: per-household identity. `householdRole` (parent|kid|roommate|manager|colleague)
+    //     drives the mode permission matrix; points/XP/streaks are DERIVED from creditLedger +
+    //     streak, never stored here (the Gains "derive at query time" lesson). ---
+    householdRole: text('household_role').notNull().default('roommate'),
+    avatarUrl: text('avatar_url'),
+    bio: text('bio'),
+    birthday: text('birthday'), // YYYY-MM-DD; age computed in the app
+    favoriteColor: text('favorite_color').notNull().default('coral'), // accent palette KEY, not a hex
+    isActive: boolean('is_active').notNull().default(true),
+    awayUntil: text('away_until'), // YYYY-MM-DD; while away: rotation skips + excluded from fairness
+    awayReason: text('away_reason'),
+    muteCelebrations: boolean('mute_celebrations').notNull().default(false),
+    // Allowance (family) — the weekly cron auto-creates a settlement when a kid meets the threshold.
+    allowanceEnabled: boolean('allowance_enabled').notNull().default(false),
+    allowancePayoutType: text('allowance_payout_type').notNull().default('money'),
+    allowanceAmountCents: integer('allowance_amount_cents').notNull().default(0),
+    allowanceRewardDescription: text('allowance_reward_description'),
+    allowanceThresholdPct: integer('allowance_threshold_pct').notNull().default(80),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
@@ -866,6 +905,193 @@ export const messageRelations = relations(message, ({ one }) => ({
   attachment: one(media, { fields: [message.mediaId], references: [media.id] }),
 }))
 
+// ============================================================================
+// ManyHandz product schema — the core loop: categories → chores → rotation →
+// assignments → completions. All org-scoped (organization = household).
+// status/role/type columns are TEXT (extend without a migration). Points/XP/
+// streaks DERIVE from creditLedger + streak; completion.pointsEarned is a
+// denormalized record kept for fairness scoring + display.
+// ============================================================================
+
+/** Chore categories — 8 defaults seeded per household on creation, plus custom ones. */
+export const choreCategory = pgTable(
+  'chore_category',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    icon: text('icon').notNull().default('home'),
+    color: text('color').notNull().default('slate'), // accent palette KEY, not a hex
+    isDefault: boolean('is_default').notNull().default(false),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('chore_category_org_idx').on(t.organizationId)],
+)
+
+/** Chore — the reusable template/definition (the "what"). Soft-deleted via isActive. */
+export const chore = pgTable(
+  'chore',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    categoryId: text('category_id').references(() => choreCategory.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    difficulty: integer('difficulty').notNull().default(3), // 1-5
+    estimatedMinutes: integer('estimated_minutes').notNull().default(15),
+    icon: text('icon').notNull().default('sparkles'),
+    /** Gold-standard reference photo ("The Goal"); R2 media row. */
+    referencePhotoMediaId: text('reference_photo_media_id').references(() => media.id, { onDelete: 'set null' }),
+    aiVerificationEnabled: boolean('ai_verification_enabled').notNull().default(false),
+    requiresApproval: boolean('requires_approval').notNull().default(true),
+    /** Ordered checklist steps. */
+    checklist: jsonb('checklist').$type<{ label: string; required: boolean }[]>().notNull().default(sql`'[]'::jsonb`),
+    isActive: boolean('is_active').notNull().default(true), // soft delete
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index('chore_org_idx').on(t.organizationId, t.isActive)],
+)
+
+/** Rotation group — auto-rotates one chore among an ordered set of members at a frequency. */
+export const rotationGroup = pgTable(
+  'rotation_group',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    choreId: text('chore_id')
+      .notNull()
+      .references(() => chore.id, { onDelete: 'cascade' }),
+    /** Ordered member ids. */
+    memberOrder: jsonb('member_order').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    currentIndex: integer('current_index').notNull().default(0),
+    rotationType: text('rotation_type').notNull().default('round_robin'), // round_robin | fixed
+    frequency: text('frequency').notNull().default('weekly'), // daily | weekly | biweekly | monthly
+    startDate: text('start_date').notNull(), // YYYY-MM-DD
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('rotation_group_org_idx').on(t.organizationId, t.isActive)],
+)
+
+/** Assignment — a dated instance of a chore tied to one member. The core unit of work. */
+export const assignment = pgTable(
+  'assignment',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    choreId: text('chore_id')
+      .notNull()
+      .references(() => chore.id, { onDelete: 'cascade' }),
+    assignedToMemberId: text('assigned_to_member_id')
+      .notNull()
+      .references(() => member.id, { onDelete: 'cascade' }),
+    rotationGroupId: text('rotation_group_id').references(() => rotationGroup.id, { onDelete: 'set null' }),
+    dueDate: text('due_date').notNull(), // YYYY-MM-DD
+    dueTime: text('due_time'), // HH:MM
+    originalDueDate: text('original_due_date'), // preserved across snoozes
+    snoozeCount: integer('snooze_count').notNull().default(0),
+    /** Per-step progress snapshot, aligned to the chore's checklist at assignment time. */
+    checklistProgress: jsonb('checklist_progress').$type<{ label: string; done: boolean }[]>().notNull().default(sql`'[]'::jsonb`),
+    // pending | in_progress | completed | overdue | skipped | pending_review | snoozed_pending_approval
+    status: text('status').notNull().default('pending'),
+    skipReason: text('skip_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index('assignment_org_status_idx').on(t.organizationId, t.status),
+    index('assignment_assignee_idx').on(t.assignedToMemberId, t.dueDate),
+    index('assignment_org_due_idx').on(t.organizationId, t.dueDate),
+  ],
+)
+
+/**
+ * Completion — the event recording an assignment was done. The Worker computes points on insert
+ * (one canonical engine, server-authoritative) and writes a creditLedger entry for the balance;
+ * pointsEarned/speedBonus here are the denormalized record used by fairness + display. Approval
+ * gates points: a pending_approval completion writes NO ledger entry until approved (brief §11).
+ */
+export const completion = pgTable(
+  'completion',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    assignmentId: text('assignment_id')
+      .notNull()
+      .references(() => assignment.id, { onDelete: 'cascade' }),
+    completedByMemberId: text('completed_by_member_id')
+      .notNull()
+      .references(() => member.id, { onDelete: 'cascade' }),
+    completedAt: timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
+    beforePhotoMediaId: text('before_photo_media_id').references(() => media.id, { onDelete: 'set null' }),
+    afterPhotoMediaId: text('after_photo_media_id').references(() => media.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    pointsEarned: integer('points_earned').notNull().default(0),
+    speedBonus: integer('speed_bonus').notNull().default(0),
+    actualMinutes: integer('actual_minutes'),
+    approvedByMemberId: text('approved_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    rejectionReason: text('rejection_reason'),
+    needsApproval: boolean('needs_approval').notNull().default(false),
+    // pending_approval | approved | rejected | ai_approved
+    status: text('status').notNull().default('approved'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('completion_assignment_idx').on(t.assignmentId),
+    index('completion_member_idx').on(t.completedByMemberId, t.status),
+    index('completion_org_idx').on(t.organizationId, t.createdAt),
+  ],
+)
+
+export const choreCategoryRelations = relations(choreCategory, ({ one, many }) => ({
+  organization: one(organization, { fields: [choreCategory.organizationId], references: [organization.id] }),
+  chores: many(chore),
+}))
+
+export const choreRelations = relations(chore, ({ one, many }) => ({
+  organization: one(organization, { fields: [chore.organizationId], references: [organization.id] }),
+  category: one(choreCategory, { fields: [chore.categoryId], references: [choreCategory.id] }),
+  assignments: many(assignment),
+}))
+
+export const rotationGroupRelations = relations(rotationGroup, ({ one }) => ({
+  organization: one(organization, { fields: [rotationGroup.organizationId], references: [organization.id] }),
+  chore: one(chore, { fields: [rotationGroup.choreId], references: [chore.id] }),
+}))
+
+export const assignmentRelations = relations(assignment, ({ one, many }) => ({
+  organization: one(organization, { fields: [assignment.organizationId], references: [organization.id] }),
+  chore: one(chore, { fields: [assignment.choreId], references: [chore.id] }),
+  assignedTo: one(member, { fields: [assignment.assignedToMemberId], references: [member.id] }),
+  completions: many(completion),
+}))
+
+export const completionRelations = relations(completion, ({ one }) => ({
+  organization: one(organization, { fields: [completion.organizationId], references: [organization.id] }),
+  assignment: one(assignment, { fields: [completion.assignmentId], references: [assignment.id] }),
+  completedBy: one(member, { fields: [completion.completedByMemberId], references: [member.id] }),
+}))
+
 // --- Inferred types (single source of truth for the app) ---
 
 export type User = typeof user.$inferSelect
@@ -898,3 +1124,10 @@ export type CalendarEvent = typeof calendarEvent.$inferSelect
 export type Message = typeof message.$inferSelect
 export type MessageCursor = typeof messageCursor.$inferSelect
 export type PaymentHandle = typeof paymentHandle.$inferSelect
+
+// ManyHandz product types
+export type ChoreCategory = typeof choreCategory.$inferSelect
+export type Chore = typeof chore.$inferSelect
+export type RotationGroup = typeof rotationGroup.$inferSelect
+export type Assignment = typeof assignment.$inferSelect
+export type Completion = typeof completion.$inferSelect

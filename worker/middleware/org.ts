@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
 import { getAuth } from '../auth'
@@ -103,8 +103,8 @@ export function requireRole(...roles: string[]): MiddlewareHandler<AuthEnv> {
  * Audit helper — append a row to activity_log for the active org. Call from routes after a
  * state-changing action; never let an audit failure fail the action itself.
  */
-export async function audit(
-  c: Parameters<MiddlewareHandler<AuthEnv>>[0],
+export async function audit<V extends AuthVariables>(
+  c: Context<{ Bindings: Env; Variables: V }>,
   entry: { entityType: string; entityId?: string; action: string; metadata?: Record<string, unknown> },
 ): Promise<void> {
   const session = c.get('session')

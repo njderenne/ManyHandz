@@ -50,6 +50,13 @@
       "when": 1781257666348,
       "tag": "0006_fuzzy_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782081099528,
+      "tag": "0007_dapper_electro",
+      "breakpoints": true
     }
   ]
 }

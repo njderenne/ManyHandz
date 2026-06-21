@@ -24,6 +24,7 @@ import { bookmarkRoutes } from './routes/bookmarks'
 import { eventRoutes } from './routes/events'
 import { messageRoutes } from './routes/messages'
 import { usersRoutes } from './routes/users'
+import { choreRoutes } from './routes/chores'
 import { devHealth } from './routes/dev-health'
 import { EMAIL_PREVIEWS } from './email/templates'
 import { injectSeo } from './seo'
@@ -105,6 +106,9 @@ app.use('/api/organizations/:orgId/messages/read', rateLimit('messages-read', { 
 app.use('/api/organizations/:orgId/bookmarks', rateLimit('bookmarks', { limit: 120, windowSeconds: 300 }))
 app.use('/api/organizations/:orgId/events', rateLimit('events', { limit: 60, windowSeconds: 300 }))
 app.use('/api/organizations/:orgId/events/:id', rateLimit('events', { limit: 60, windowSeconds: 300 }))
+// ManyHandz — chore library writes (create/edit/delete are mutating; reads are uncapped).
+app.use('/api/organizations/:orgId/chores', rateLimit('chores', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/chores/:choreId', rateLimit('chores', { limit: 60, windowSeconds: 300 }))
 app.use('/api/users/*', rateLimit('users-public', { limit: 120, windowSeconds: 300 }))
 // Cycle-6 audit: every mutating group gets a cap — paid R2 writes, push fan-out, unbounded
 // inserts, Stripe session creation, thread-create spam, streak-row creation, notification
@@ -161,6 +165,9 @@ app.route('/api/organizations', chatRoutes)
 app.route('/api/organizations', bookmarkRoutes)
 app.route('/api/organizations', eventRoutes)
 app.route('/api/organizations', messageRoutes)
+
+// --- ManyHandz product routes (org-scoped; writes gated by the mode permission matrix) ---
+app.route('/api/organizations', choreRoutes)
 
 // Public user profiles — session-gated, safe fields only.
 app.route('/api/users', usersRoutes)

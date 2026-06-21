@@ -33,6 +33,11 @@ export const queryKeys = {
       ['organizations', orgId, 'events', eventId] as const,
     messages: (orgId: string, channel: string) =>
       ['organizations', orgId, 'messages', channel] as const,
+    /** ManyHandz — chores library + categories. */
+    chores: (orgId: string) => ['organizations', orgId, 'chores'] as const,
+    choreDetail: (orgId: string, choreId: string) =>
+      ['organizations', orgId, 'chores', choreId] as const,
+    choreCategories: (orgId: string) => ['organizations', orgId, 'chore-categories'] as const,
   },
 
   users: {
