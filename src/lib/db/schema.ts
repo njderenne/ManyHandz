@@ -1092,6 +1092,451 @@ export const completionRelations = relations(completion, ({ one }) => ({
   completedBy: one(member, { fields: [completion.completedByMemberId], references: [member.id] }),
 }))
 
+// ============================================================================
+// ManyHandz product schema — the breadth. All org-scoped (organization =
+// household). status/type/kind columns are TEXT (extend without a migration).
+// Member FKs: the subject member cascades; secondary actor/creator refs set
+// null to keep the record. Points spend/earn flow through creditLedger (never
+// a stored balance); these tables hold the domain rows the engines act on.
+// ============================================================================
+
+// --- Rewards & goals (family gamification) ---
+
+export const reward = pgTable(
+  'reward',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    icon: text('icon').notNull().default('gift'),
+    pointsCost: integer('points_cost').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [index('reward_org_idx').on(t.organizationId, t.isActive), check('reward_cost_positive', sql`${t.pointsCost} > 0`)],
+)
+
+export const rewardRedemption = pgTable(
+  'reward_redemption',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    rewardId: text('reward_id').notNull().references(() => reward.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    pointsSpent: integer('points_spent').notNull(),
+    status: text('status').notNull().default('pending'), // pending | approved | rejected
+    approvedByMemberId: text('approved_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    redeemedAt: timestamp('redeemed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('reward_redemption_org_idx').on(t.organizationId, t.status), index('reward_redemption_member_idx').on(t.memberId)],
+)
+
+export const goal = pgTable(
+  'goal',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    icon: text('icon').notNull().default('target'),
+    targetPoints: integer('target_points').notNull(),
+    currentPoints: integer('current_points').notNull().default(0),
+    monetaryValueCents: integer('monetary_value_cents'),
+    autoContributeEnabled: boolean('auto_contribute_enabled').notNull().default(false),
+    autoContributePercentage: integer('auto_contribute_percentage').notNull().default(25),
+    status: text('status').notNull().default('active'), // active | completed | canceled | pending_approval
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [index('goal_org_idx').on(t.organizationId, t.status), index('goal_member_idx').on(t.memberId), check('goal_target_positive', sql`${t.targetPoints} > 0`)],
+)
+
+export const goalContribution = pgTable(
+  'goal_contribution',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    goalId: text('goal_id').notNull().references(() => goal.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    points: integer('points').notNull(),
+    source: text('source').notNull().default('manual'), // chore_completion | bonus | manual | transfer
+    sourceId: text('source_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('goal_contribution_goal_idx').on(t.goalId), check('goal_contribution_positive', sql`${t.points} > 0`)],
+)
+
+// --- Badges & milestones (system badges use achievement_unlock; these are the household-defined set) ---
+
+export const customBadge = pgTable(
+  'custom_badge',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    icon: text('icon').notNull().default('award'),
+    color: text('color').notNull().default('amber'), // accent palette KEY, not a hex
+    criteriaType: text('criteria_type').notNull(), // manual | chore_count | category_count | streak | speed_bonus_count | points_total
+    criteriaTarget: integer('criteria_target'),
+    criteriaCategoryId: text('criteria_category_id').references(() => choreCategory.id, { onDelete: 'set null' }),
+    isActive: boolean('is_active').notNull().default(true),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('custom_badge_org_idx').on(t.organizationId, t.isActive)],
+)
+
+export const customBadgeAward = pgTable(
+  'custom_badge_award',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    badgeId: text('badge_id').notNull().references(() => customBadge.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    awardedByMemberId: text('awarded_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    awardedAt: timestamp('awarded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('custom_badge_award_unique_idx').on(t.badgeId, t.memberId)],
+)
+
+export const householdMilestone = pgTable(
+  'household_milestone',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    milestoneKey: text('milestone_key').notNull(),
+    earnedAt: timestamp('earned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('household_milestone_unique_idx').on(t.organizationId, t.milestoneKey)],
+)
+
+// --- Challenges & competitions ---
+
+export const bonusChallenge = pgTable(
+  'bonus_challenge',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    challengeType: text('challenge_type').notNull(), // double_points | complete_count | no_overdue | custom
+    targetValue: integer('target_value'),
+    bonusPoints: integer('bonus_points').notNull().default(0),
+    pointsMultiplier: integer('points_multiplier_x10').notNull().default(10), // ×10 fixed-point: 15 = 1.5×
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull().defaultNow(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    status: text('status').notNull().default('active'), // active | completed | failed | expired
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('bonus_challenge_org_idx').on(t.organizationId, t.status)],
+)
+
+export const competition = pgTable(
+  'competition',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    challengerMemberId: text('challenger_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    opponentMemberId: text('opponent_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    competitionType: text('competition_type').notNull(), // most_points | most_completions | first_to_target | specific_chore_race
+    targetValue: integer('target_value'),
+    choreId: text('chore_id').references(() => chore.id, { onDelete: 'set null' }),
+    stakesPoints: integer('stakes_points').notNull().default(0),
+    stakesDescription: text('stakes_description'),
+    challengerProgress: integer('challenger_progress').notNull().default(0),
+    opponentProgress: integer('opponent_progress').notNull().default(0),
+    status: text('status').notNull().default('pending'), // pending | active | completed | declined | expired
+    winnerMemberId: text('winner_member_id').references(() => member.id, { onDelete: 'set null' }),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull().defaultNow(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('competition_org_idx').on(t.organizationId, t.status)],
+)
+
+export const pointGift = pgTable(
+  'point_gift',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    fromMemberId: text('from_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    toMemberId: text('to_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    points: integer('points').notNull(),
+    note: text('note'),
+    giftType: text('gift_type').notNull().default('general'), // general | birthday | thank_you | bonus
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('point_gift_org_idx').on(t.organizationId, t.createdAt), check('point_gift_positive', sql`${t.points} > 0`)],
+)
+
+// --- Settle-Up ledger (money AND non-money obligations) ---
+
+export const settlement = pgTable(
+  'settlement',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    fromMemberId: text('from_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }), // who OWES
+    toMemberId: text('to_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }), // who is OWED
+    payoutType: text('payout_type').notNull().default('money'), // money | treat | gift | privilege | experience | custom
+    amountCents: integer('amount_cents'), // only for payout_type = money
+    payoutDescription: text('payout_description'),
+    description: text('description').notNull(),
+    sourceType: text('source_type').notNull(), // goal_payout | competition | reward_redemption | allowance | manual
+    sourceId: text('source_id'),
+    status: text('status').notNull().default('pending'), // pending | settled | forgiven | declined
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    settledVia: text('settled_via'), // venmo | paypal | cashapp | apple_cash | cash | in_person | other
+    settledNote: text('settled_note'),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('settlement_org_idx').on(t.organizationId, t.status)],
+)
+
+// --- Shopping lists ---
+
+export const shoppingList = pgTable(
+  'shopping_list',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull().default('Groceries'),
+    icon: text('icon').notNull().default('shopping-cart'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isArchived: boolean('is_archived').notNull().default(false),
+    /** Auto-add staple rules: [{item, category, frequencyDays, lastAdded}]. */
+    recurringItems: jsonb('recurring_items').$type<{ item: string; category?: string; frequencyDays: number; lastAdded?: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('shopping_list_org_idx').on(t.organizationId, t.isArchived)],
+)
+
+export const shoppingItem = pgTable(
+  'shopping_item',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull().references(() => shoppingList.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    quantity: text('quantity'),
+    category: text('category'), // produce | dairy | meat | ... | other
+    note: text('note'),
+    isChecked: boolean('is_checked').notNull().default(false),
+    checkedByMemberId: text('checked_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+    assignedToMemberId: text('assigned_to_member_id').references(() => member.id, { onDelete: 'set null' }),
+    addedByMemberId: text('added_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('shopping_item_list_idx').on(t.listId, t.isChecked)],
+)
+
+export const quickTask = pgTable(
+  'quick_task',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    note: text('note'),
+    assignedToMemberId: text('assigned_to_member_id').references(() => member.id, { onDelete: 'set null' }),
+    dueDate: text('due_date'), // YYYY-MM-DD
+    dueTime: text('due_time'),
+    isCompleted: boolean('is_completed').notNull().default(false),
+    completedByMemberId: text('completed_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('quick_task_org_idx').on(t.organizationId, t.isCompleted)],
+)
+
+// --- Collaboration: comments, polls (normalized votes), announcements ---
+
+export const assignmentComment = pgTable(
+  'assignment_comment',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    assignmentId: text('assignment_id').notNull().references(() => assignment.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').references(() => member.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('assignment_comment_idx').on(t.assignmentId, t.createdAt)],
+)
+
+export const householdPoll = pgTable(
+  'household_poll',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    question: text('question').notNull(),
+    /** [{id, text}] — 2–6 options. */
+    options: jsonb('options').$type<{ id: string; text: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    allowMultiple: boolean('allow_multiple').notNull().default(false),
+    isAnonymous: boolean('is_anonymous').notNull().default(false),
+    closesAt: timestamp('closes_at', { withTimezone: true }),
+    isClosed: boolean('is_closed').notNull().default(false),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('household_poll_org_idx').on(t.organizationId, t.isClosed)],
+)
+
+/** Normalized poll votes (the brief's "normalize votes into a table" fix — not a JSON blob). */
+export const pollVote = pgTable(
+  'poll_vote',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    pollId: text('poll_id').notNull().references(() => householdPoll.id, { onDelete: 'cascade' }),
+    optionId: text('option_id').notNull(),
+    memberId: text('member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('poll_vote_unique_idx').on(t.pollId, t.memberId, t.optionId), index('poll_vote_poll_idx').on(t.pollId)],
+)
+
+export const announcement = pgTable(
+  'announcement',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    authorMemberId: text('author_member_id').references(() => member.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    body: text('body'),
+    priority: text('priority').notNull().default('normal'), // normal | important | urgent
+    pinned: boolean('pinned').notNull().default(true),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('announcement_org_idx').on(t.organizationId, t.pinned)],
+)
+
+// --- Assignment workflow extras: snooze + swap ---
+
+export const snoozeRequest = pgTable(
+  'snooze_request',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    assignmentId: text('assignment_id').notNull().references(() => assignment.id, { onDelete: 'cascade' }),
+    requestedByMemberId: text('requested_by_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    reason: text('reason').notNull(),
+    newDueDate: text('new_due_date').notNull(),
+    newDueTime: text('new_due_time'),
+    status: text('status').notNull().default('pending'), // pending | approved | denied
+    reviewedByMemberId: text('reviewed_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    denialReason: text('denial_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('snooze_request_assignment_idx').on(t.assignmentId), index('snooze_request_org_idx').on(t.organizationId, t.status)],
+)
+
+export const swapRequest = pgTable(
+  'swap_request',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    requesterAssignmentId: text('requester_assignment_id').notNull().references(() => assignment.id, { onDelete: 'cascade' }),
+    targetAssignmentId: text('target_assignment_id').references(() => assignment.id, { onDelete: 'cascade' }),
+    requesterMemberId: text('requester_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    targetMemberId: text('target_member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    message: text('message'),
+    status: text('status').notNull().default('pending'), // pending | accepted | declined | expired
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [index('swap_request_org_idx').on(t.organizationId, t.status)],
+)
+
+// --- AI verification + weekly reports + meal planning + activity reactions ---
+
+export const aiVerification = pgTable(
+  'ai_verification',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    completionId: text('completion_id').notNull().references(() => completion.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull().default('openai'),
+    model: text('model').notNull(),
+    confidenceScore: integer('confidence_score').notNull(), // 0-100
+    referenceMatchScore: integer('reference_match_score'), // 0-100
+    reasoning: text('reasoning').notNull(),
+    referenceComparison: text('reference_comparison'),
+    decision: text('decision').notNull(), // auto_approved | flagged_for_review | auto_rejected
+    beforeAnalysis: text('before_analysis'),
+    afterAnalysis: text('after_analysis'),
+    rawResponse: jsonb('raw_response').$type<Record<string, unknown>>(),
+    costCents: integer('cost_cents'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ai_verification_completion_idx').on(t.completionId), index('ai_verification_org_idx').on(t.organizationId, t.createdAt)],
+)
+
+export const weeklyReport = pgTable(
+  'weekly_report',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    weekStart: text('week_start').notNull(), // YYYY-MM-DD (Monday)
+    weekEnd: text('week_end').notNull(),
+    reportData: jsonb('report_data').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    aiSuggestions: jsonb('ai_suggestions').$type<unknown[]>(),
+    mvpMemberId: text('mvp_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('weekly_report_unique_idx').on(t.organizationId, t.weekStart)],
+)
+
+/** Meal planning (promoted feature) — one entry per date+meal; grocery generation reads these. */
+export const mealPlanEntry = pgTable(
+  'meal_plan_entry',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    date: text('date').notNull(), // YYYY-MM-DD
+    mealType: text('meal_type').notNull(), // breakfast | lunch | dinner | snack
+    title: text('title').notNull(),
+    notes: text('notes'),
+    recipeUrl: text('recipe_url'),
+    /** Ingredients to push to a shopping list: [{name, quantity?, category?}]. */
+    ingredients: jsonb('ingredients').$type<{ name: string; quantity?: string; category?: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    addedByMemberId: text('added_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [index('meal_plan_entry_org_date_idx').on(t.organizationId, t.date)],
+)
+
+/** Normalized activity-feed reactions (the brief's fix — not a last-write-wins JSON blob). The feed
+ *  itself is the org-scoped activity_log; a reaction targets one log row. */
+export const activityReaction = pgTable(
+  'activity_reaction',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    activityId: text('activity_id').notNull().references(() => activityLog.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull().references(() => member.id, { onDelete: 'cascade' }),
+    emoji: text('emoji').notNull(), // 👍 ❤️ 🔥 ⭐ 👏
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('activity_reaction_unique_idx').on(t.activityId, t.memberId, t.emoji)],
+)
+
 // --- Inferred types (single source of truth for the app) ---
 
 export type User = typeof user.$inferSelect
@@ -1131,3 +1576,27 @@ export type Chore = typeof chore.$inferSelect
 export type RotationGroup = typeof rotationGroup.$inferSelect
 export type Assignment = typeof assignment.$inferSelect
 export type Completion = typeof completion.$inferSelect
+export type Reward = typeof reward.$inferSelect
+export type RewardRedemption = typeof rewardRedemption.$inferSelect
+export type Goal = typeof goal.$inferSelect
+export type GoalContribution = typeof goalContribution.$inferSelect
+export type CustomBadge = typeof customBadge.$inferSelect
+export type CustomBadgeAward = typeof customBadgeAward.$inferSelect
+export type HouseholdMilestone = typeof householdMilestone.$inferSelect
+export type BonusChallenge = typeof bonusChallenge.$inferSelect
+export type Competition = typeof competition.$inferSelect
+export type PointGift = typeof pointGift.$inferSelect
+export type Settlement = typeof settlement.$inferSelect
+export type ShoppingList = typeof shoppingList.$inferSelect
+export type ShoppingItem = typeof shoppingItem.$inferSelect
+export type QuickTask = typeof quickTask.$inferSelect
+export type AssignmentComment = typeof assignmentComment.$inferSelect
+export type HouseholdPoll = typeof householdPoll.$inferSelect
+export type PollVote = typeof pollVote.$inferSelect
+export type Announcement = typeof announcement.$inferSelect
+export type SnoozeRequest = typeof snoozeRequest.$inferSelect
+export type SwapRequest = typeof swapRequest.$inferSelect
+export type AiVerification = typeof aiVerification.$inferSelect
+export type WeeklyReport = typeof weeklyReport.$inferSelect
+export type MealPlanEntry = typeof mealPlanEntry.$inferSelect
+export type ActivityReaction = typeof activityReaction.$inferSelect

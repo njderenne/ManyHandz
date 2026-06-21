@@ -57,6 +57,13 @@
       "when": 1782081099528,
       "tag": "0007_dapper_electro",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782082670768,
+      "tag": "0008_groovy_lake",
+      "breakpoints": true
     }
   ]
 }
