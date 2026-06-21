@@ -27,11 +27,11 @@ export const MARKETING: {
    *  `null` falls back to the brand-gradient banner. */
   ctaImage: ImageSourcePropType | null
 } = {
-  heroImage: null,
-  feature1Image: null,
-  feature2Image: null,
-  feature3Image: null,
-  ctaImage: null,
+  heroImage: require('../../../assets/images/marketing/hero.jpg'),
+  feature1Image: require('../../../assets/images/marketing/feature-1.jpg'),
+  feature2Image: require('../../../assets/images/marketing/feature-2.jpg'),
+  feature3Image: require('../../../assets/images/marketing/feature-3.jpg'),
+  ctaImage: require('../../../assets/images/marketing/cta.jpg'),
   // Set by `generate-marketing.js --slot <hero|feature1|feature2|feature3|cta>`, e.g.:
   // heroImage: require('../../../assets/images/marketing/hero.jpg'),
 }

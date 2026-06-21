@@ -10,6 +10,10 @@ import type { PropsWithChildren } from 'react'
  * the app's dark theme instead of flashing white. Keep this minimal and static — it runs in Node
  * at build/SSG time, so it must not use hooks, browser globals, or app state.
  *
+ * NOTE: this app builds with `web.output: 'single'` (SPA), where Expo IGNORES this file's <head> for
+ * meta — so SEO tags (title, description, Open Graph, JSON-LD) are injected at the edge by the Worker
+ * via worker/seo.ts (it HTMLRewrites the served index.html). Put SEO changes THERE, not here.
+ *
  * See: https://docs.expo.dev/router/reference/static-rendering/#root-html
  */
 export default function Root({ children }: PropsWithChildren) {

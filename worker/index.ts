@@ -26,6 +26,7 @@ import { messageRoutes } from './routes/messages'
 import { usersRoutes } from './routes/users'
 import { devHealth } from './routes/dev-health'
 import { EMAIL_PREVIEWS } from './email/templates'
+import { injectSeo } from './seo'
 
 /**
  * Cloudflare Worker entry — the API + the static SPA host.
@@ -175,8 +176,13 @@ app.route('/api/user', settingsRoutes)
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404))
 
 // Fallback: serve the SPA. Static-asset routing + SPA history fallback is handled
-// by the [assets] config in wrangler.toml; this forwards anything the Worker sees.
-app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw))
+// by the [assets] config in wrangler.toml; this forwards anything the Worker sees. HTML documents
+// get SEO <head> tags injected at the edge (output:'single' ignores app/+html.tsx meta — see seo.ts).
+app.all('*', async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.raw)
+  const contentType = res.headers.get('content-type') ?? ''
+  return contentType.includes('text/html') ? injectSeo(res) : res
+})
 
 /**
  * Worker entry points: `fetch` wraps the Hono app so the secrets check runs once per isolate
