@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api/client'
 import { queryKeys } from '@/lib/query/keys'
-import type { Chore } from '@/lib/db/schema'
+import type { Chore, ChoreCategory } from '@/lib/db/schema'
 
 /**
  * useChores — the canonical ManyHandz resource hook (mirrors useNotifications). Reads are available
@@ -70,5 +70,22 @@ export function useDeleteChore(orgId: string) {
     mutationFn: (choreId: string) =>
       apiFetch<{ ok: boolean }>(`/api/organizations/${orgId}/chores/${choreId}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.organizations.chores(orgId) }),
+  })
+}
+
+export function useChoreCategories(orgId: string) {
+  return useQuery({
+    queryKey: queryKeys.organizations.choreCategories(orgId),
+    queryFn: () => apiFetch<ChoreCategory[]>(`/api/organizations/${orgId}/chore-categories`),
+    enabled: Boolean(orgId),
+  })
+}
+
+export function useCreateChoreCategory(orgId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { name: string; icon?: string; color?: string }) =>
+      apiFetch<ChoreCategory>(`/api/organizations/${orgId}/chore-categories`, { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.organizations.choreCategories(orgId) }),
   })
 }

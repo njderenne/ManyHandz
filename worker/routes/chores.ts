@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg, audit } from '../middleware/org'
@@ -143,4 +143,34 @@ choreRoutes.delete('/:orgId/chores/:choreId', requireOrg, requirePermission('cre
   if (!row) return c.json({ error: 'not found' }, 404)
   await audit(c, { entityType: 'chore', entityId: choreId, action: 'chore.deleted' })
   return c.json({ ok: true })
+})
+
+// --- Chore categories (8 seeded per household + custom) ---
+
+choreRoutes.get('/:orgId/chore-categories', requireOrg, async (c) => {
+  const orgId = c.get('orgId')
+  const rows = await getDb(c.env.DATABASE_URL)
+    .select()
+    .from(schema.choreCategory)
+    .where(eq(schema.choreCategory.organizationId, orgId))
+    .orderBy(asc(schema.choreCategory.displayOrder), asc(schema.choreCategory.name))
+  return c.json(rows)
+})
+
+const categoryInput = z.object({
+  name: z.string().trim().min(1).max(40),
+  icon: z.string().max(40).optional(),
+  color: z.string().max(24).optional(),
+})
+
+choreRoutes.post('/:orgId/chore-categories', requireOrg, requirePermission('createChores'), async (c) => {
+  const { orgId } = c.get('household')
+  const parsed = categoryInput.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
+  const [row] = await getDb(c.env.DATABASE_URL)
+    .insert(schema.choreCategory)
+    .values({ organizationId: orgId, name: parsed.data.name, icon: parsed.data.icon ?? 'home', color: parsed.data.color ?? 'slate', isDefault: false })
+    .returning()
+  await audit(c, { entityType: 'chore_category', entityId: row.id, action: 'category.created' })
+  return c.json(row, 201)
 })
