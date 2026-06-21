@@ -1,6 +1,7 @@
 import { lt } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
 import type { Env } from './env'
+import { runRotation, runOverdue, runCompetitions, runChallenges } from './manyhandz/cron-jobs'
 
 /**
  * Cron — the `scheduled` export wired up in index.ts and triggered by [triggers] in wrangler.toml
@@ -58,6 +59,38 @@ export async function scheduled(
     done('verification.prune', { deleted: gone.length })
   } catch (e) {
     failed('verification.prune', e)
+  }
+
+  // 3. ManyHandz — advance rotation groups that land on an interval boundary today.
+  try {
+    const n = await runRotation(db)
+    done('manyhandz.rotation', { created: n })
+  } catch (e) {
+    failed('manyhandz.rotation', e)
+  }
+
+  // 4. ManyHandz — flip past-due assignments to overdue and reset those members' chore streaks.
+  try {
+    const n = await runOverdue(db)
+    done('manyhandz.overdue', { flipped: n })
+  } catch (e) {
+    failed('manyhandz.overdue', e)
+  }
+
+  // 5. ManyHandz — resolve finished competitions (winner by progress; transfer stakes via the ledger).
+  try {
+    const n = await runCompetitions(db)
+    done('manyhandz.competitions', { resolved: n })
+  } catch (e) {
+    failed('manyhandz.competitions', e)
+  }
+
+  // 6. ManyHandz — close out finished challenges.
+  try {
+    const n = await runChallenges(db)
+    done('manyhandz.challenges', { expired: n })
+  } catch (e) {
+    failed('manyhandz.challenges', e)
   }
 
   // --- Pattern: an app-specific reminder job (NOT active in the template) ---
