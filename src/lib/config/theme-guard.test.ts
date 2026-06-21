@@ -15,6 +15,7 @@ const EXEMPT_FILES = new Set([
   'app/(dev)/components/style.tsx', // dev gallery: previews alternative brand ramps + gradient demos
   'src/components/native/qr-code.tsx', // QR must stay dark-on-white for scan contrast
   'app/+html.tsx', // static web HTML shell: runs in Node pre-hydration, before the theme/NativeWind load — raw hex sets the anti-flash body background
+  'src/lib/manyhandz/accents.ts', // the member accent palette — fixed identity colors (avatar rings) that intentionally do NOT flip with the theme
 ])
 
 // Shadows are black in both schemes by design — a `shadowColor: '#000000'` line is allowed.
