@@ -39,6 +39,9 @@ export const queryKeys = {
     choreDetail: (orgId: string, choreId: string) =>
       ['organizations', orgId, 'chores', choreId] as const,
     choreCategories: (orgId: string) => ['organizations', orgId, 'chore-categories'] as const,
+    assignments: (orgId: string) => ['organizations', orgId, 'assignments'] as const,
+    assignmentDetail: (orgId: string, id: string) => ['organizations', orgId, 'assignments', id] as const,
+    completions: (orgId: string, status: string) => ['organizations', orgId, 'completions', status] as const,
   },
 
   users: {
