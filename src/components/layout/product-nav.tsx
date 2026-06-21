@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { cn } from '@/lib/utils'
 import { useColors } from '@/lib/config/theme'
 import { APP_CONFIG } from '@/lib/config/app'
-import { PRIMARY_NAV, isNavHidden, activeNavName } from '@/lib/config/navigation'
+import { isNavHidden, activeNavName } from '@/lib/config/navigation'
+import { useHouseholdMode } from '@/lib/hooks/useHouseholdMode'
 import { Text } from '@/components/ui/text'
 
 /**
@@ -26,9 +27,10 @@ export function ProductTabBar() {
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
   const colors = useColors()
+  const { navTabs } = useHouseholdMode()
 
   if (isNavHidden(pathname)) return null
-  const active = activeNavName(pathname)
+  const active = activeNavName(pathname, navTabs)
   // A route that matches NO tab (a standalone drill-in like /paywall, or a screen owned by a nested
   // navigator like the dev gallery's own Tabs) is full-screen with its own back affordance — no
   // nav, and never a double bar stacked under another navigator's tabs.
@@ -36,7 +38,7 @@ export function ProductTabBar() {
 
   return (
     <View className="flex-row border-t border-border bg-card" style={{ paddingBottom: insets.bottom }}>
-      {PRIMARY_NAV.map((item) => {
+      {navTabs.map((item) => {
         const isActive = item.name === active
         const Icon = item.icon
         return (
@@ -73,9 +75,10 @@ export function ProductTabBar() {
 export function ProductTopNav() {
   const pathname = usePathname()
   const colors = useColors()
+  const { navTabs } = useHouseholdMode()
 
   if (isNavHidden(pathname)) return null
-  const active = activeNavName(pathname)
+  const active = activeNavName(pathname, navTabs)
   if (!active) return null
 
   const initial = (APP_CONFIG.name.trim()[0] ?? 'A').toUpperCase()
@@ -98,7 +101,7 @@ export function ProductTopNav() {
           </Pressable>
         </Link>
         <View className="flex-row items-center gap-1">
-          {PRIMARY_NAV.map((item) => {
+          {navTabs.map((item) => {
             const isActive = item.name === active
             return (
               <Link key={item.name} href={item.href as never} asChild>

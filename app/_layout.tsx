@@ -17,6 +17,7 @@ import { ErrorBoundary as CrashGuard } from '@/components/ui/error-boundary'
 import { wireNotificationTaps } from '@/lib/native/notifications'
 import { useActiveOrgGuard } from '@/lib/auth/use-active-org-guard'
 import { useRequireAuth } from '@/lib/auth/use-require-auth'
+import { useRequireHousehold } from '@/lib/auth/use-require-household'
 
 // expo-router renders this for any screen that throws — navigation survives, white screens don't.
 export { RouteError as ErrorBoundary } from '@/components/layout/route-error'
@@ -209,6 +210,8 @@ function AppShell() {
   // Auto-activate a sole organization so a user who created it elsewhere lands straight inside it
   // (no "create → activate" limbo). No-op for 0 or 2+ orgs; loop-safe and fail-open.
   useActiveOrgGuard()
+  // Signed in but no household yet → onboarding (create/join). Fail-open; never traps.
+  useRequireHousehold()
 
   if (updateRequired) return <UpdateRequiredScreen />
   // The redirect to /login also clears the nav (isNavHidden('/login') is already true); holding the

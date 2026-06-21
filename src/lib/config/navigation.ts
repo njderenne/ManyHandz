@@ -64,9 +64,12 @@ export function isNavHidden(pathname: string): boolean {
  * highlights its parent tab (/children/[id] → the tab whose href is /children). The root '/' href
  * only wins on an exact match — otherwise it would shadow every route as a one-char prefix.
  */
-export function activeNavName(pathname: string): string | undefined {
+export function activeNavName(
+  pathname: string,
+  tabs: readonly { name: string; href: string; aliases?: string[] }[] = PRIMARY_NAV,
+): string | undefined {
   let best: { name: string; len: number } | undefined
-  for (const item of PRIMARY_NAV) {
+  for (const item of tabs) {
     // Match the tab's href OR any of its aliases; the longest matching prefix across all items wins.
     for (const prefix of [item.href, ...(item.aliases ?? [])]) {
       const matches =
