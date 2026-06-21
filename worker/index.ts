@@ -28,6 +28,7 @@ import { choreRoutes } from './routes/chores'
 import { householdRoutes } from './routes/household'
 import { assignmentRoutes } from './routes/assignments'
 import { completionRoutes } from './routes/completions'
+import { onboardingRoutes } from './routes/onboarding'
 import { devHealth } from './routes/dev-health'
 import { EMAIL_PREVIEWS } from './email/templates'
 import { injectSeo } from './seo'
@@ -117,6 +118,8 @@ app.use('/api/organizations/:orgId/members/:memberId', rateLimit('members-write'
 app.use('/api/organizations/:orgId/assignments/:assignmentId/complete', rateLimit('completions', { limit: 60, windowSeconds: 300 }))
 app.use('/api/organizations/:orgId/completions/:id/approve', rateLimit('approvals', { limit: 60, windowSeconds: 300 }))
 app.use('/api/organizations/:orgId/completions/:id/reject', rateLimit('approvals', { limit: 60, windowSeconds: 300 }))
+// Join-by-code is an enumeration surface — cap it (also covers /lookup).
+app.use('/api/households/*', rateLimit('onboarding', { limit: 20, windowSeconds: 300 }))
 app.use('/api/users/*', rateLimit('users-public', { limit: 120, windowSeconds: 300 }))
 // Cycle-6 audit: every mutating group gets a cap — paid R2 writes, push fan-out, unbounded
 // inserts, Stripe session creation, thread-create spam, streak-row creation, notification
@@ -179,6 +182,7 @@ app.route('/api/organizations', householdRoutes)
 app.route('/api/organizations', choreRoutes)
 app.route('/api/organizations', assignmentRoutes)
 app.route('/api/organizations', completionRoutes)
+app.route('/api/households', onboardingRoutes)
 
 // Public user profiles — session-gated, safe fields only.
 app.route('/api/users', usersRoutes)

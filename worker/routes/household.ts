@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg, audit } from '../middleware/org'
 import { resolveHousehold, type HouseholdEnv } from '../household'
-import { can, getModeConfig, HOUSEHOLD_ROLES, type HouseholdMode } from '@/lib/config/modes'
+import { can, getModeConfig, roleForJoin, HOUSEHOLD_ROLES, type HouseholdMode } from '@/lib/config/modes'
 import { levelForXp, titleForLevel } from '@/lib/manyhandz/levels'
 
 /**
@@ -24,6 +24,24 @@ export const householdRoutes = new Hono<HouseholdEnv>()
 export const POINTS_KIND = 'points'
 /** streak.kind for the chore-completion daily streak. */
 export const CHORE_STREAK_KIND = 'chore'
+
+/** The 8 starter categories seeded into every new household (icons are lucide keys; colors are
+ *  accent-palette keys the client maps — never hexes). */
+const DEFAULT_CATEGORIES: { name: string; icon: string; color: string }[] = [
+  { name: 'Kitchen', icon: 'utensils', color: 'amber' },
+  { name: 'Bathroom', icon: 'bath', color: 'blue' },
+  { name: 'Living Areas', icon: 'sofa', color: 'violet' },
+  { name: 'Bedroom', icon: 'bed-double', color: 'pink' },
+  { name: 'Outdoor', icon: 'trees', color: 'emerald' },
+  { name: 'Laundry', icon: 'shirt', color: 'cyan' },
+  { name: 'Pets', icon: 'dog', color: 'orange' },
+  { name: 'General', icon: 'home', color: 'slate' },
+]
+
+/** 8-char uppercase join code (stored + matched uppercase — the old app's case-mismatch bug). */
+function newInviteCode(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
+}
 
 householdRoutes.get('/:orgId/household', requireOrg, async (c) => {
   const ctx = await resolveHousehold(c)
@@ -234,4 +252,61 @@ householdRoutes.patch('/:orgId/members/:memberId', requireOrg, async (c) => {
   if (!row) return c.json({ error: 'not found' }, 404)
   await audit(c, { entityType: 'member', entityId: targetId, action: isSelf ? 'member.profile_updated' : 'member.managed' })
   return c.json({ ok: true })
+})
+
+/**
+ * Household SETUP — runs once right after authClient.organization.create + setActive, by the owner.
+ * Sets the mode (which drives everything), mints the join code, starts the 14-day trial, sets the
+ * creator's household role, and seeds the 8 starter categories. Idempotent on inviteCode.
+ */
+const setupInput = z.object({ mode: z.enum(['family', 'roommate']), timezone: z.string().max(64).optional() })
+
+householdRoutes.post('/:orgId/household/setup', requireOrg, async (c) => {
+  const session = c.get('session')
+  const orgId = c.get('orgId')
+  const db = getDb(c.env.DATABASE_URL)
+
+  const [m] = await db
+    .select({ id: schema.member.id, role: schema.member.role })
+    .from(schema.member)
+    .where(and(eq(schema.member.organizationId, orgId), eq(schema.member.userId, session.user.id)))
+    .limit(1)
+  if (!m || m.role !== 'owner') return c.json({ error: 'forbidden — only the creator sets up the household' }, 403)
+
+  const [org] = await db
+    .select({ inviteCode: schema.organization.inviteCode })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, orgId))
+    .limit(1)
+  if (org?.inviteCode) return c.json({ error: 'already set up', inviteCode: org.inviteCode }, 409)
+
+  const parsed = setupInput.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
+  const mode = parsed.data.mode as HouseholdMode
+  const code = newInviteCode()
+  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+
+  await db
+    .update(schema.organization)
+    .set({
+      mode,
+      inviteCode: code,
+      timezone: parsed.data.timezone ?? 'America/New_York',
+      subscriptionStatus: 'trialing',
+      trialEndsAt,
+    })
+    .where(eq(schema.organization.id, orgId))
+  await db.update(schema.member).set({ householdRole: roleForJoin(mode, true) }).where(eq(schema.member.id, m.id))
+  await db.insert(schema.choreCategory).values(
+    DEFAULT_CATEGORIES.map((cat, i) => ({
+      organizationId: orgId,
+      name: cat.name,
+      icon: cat.icon,
+      color: cat.color,
+      isDefault: true,
+      displayOrder: i,
+    })),
+  )
+  await audit(c, { entityType: 'household', entityId: orgId, action: 'household.created', metadata: { mode } })
+  return c.json({ ok: true, inviteCode: code, mode })
 })
