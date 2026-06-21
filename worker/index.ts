@@ -29,6 +29,23 @@ import { householdRoutes } from './routes/household'
 import { assignmentRoutes } from './routes/assignments'
 import { completionRoutes } from './routes/completions'
 import { onboardingRoutes } from './routes/onboarding'
+import { rewardRoutes } from './routes/rewards'
+import { goalRoutes } from './routes/goals'
+import { settlementRoutes } from './routes/settlements'
+import { shoppingRoutes } from './routes/shopping'
+import { quickTaskRoutes } from './routes/quick-tasks'
+import { pollRoutes } from './routes/polls'
+import { announcementRoutes } from './routes/announcements'
+import { commentRoutes } from './routes/comments'
+import { challengeRoutes } from './routes/challenges'
+import { competitionRoutes } from './routes/competitions'
+import { giftRoutes } from './routes/gifts'
+import { badgeRoutes } from './routes/badges'
+import { fairnessRoutes } from './routes/fairness'
+import { reportRoutes } from './routes/reports'
+import { requestRoutes } from './routes/requests'
+import { activityRoutes } from './routes/activity'
+import { mealRoutes } from './routes/meals'
 import { devHealth } from './routes/dev-health'
 import { EMAIL_PREVIEWS } from './email/templates'
 import { injectSeo } from './seo'
@@ -120,6 +137,10 @@ app.use('/api/organizations/:orgId/completions/:id/approve', rateLimit('approval
 app.use('/api/organizations/:orgId/completions/:id/reject', rateLimit('approvals', { limit: 60, windowSeconds: 300 }))
 // Join-by-code is an enumeration surface — cap it (also covers /lookup).
 app.use('/api/households/*', rateLimit('onboarding', { limit: 20, windowSeconds: 300 }))
+// Point-moving writes (the abuse-sensitive ones across the breadth resources).
+app.use('/api/organizations/:orgId/rewards/:rewardId/redeem', rateLimit('rewards-redeem', { limit: 20, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/goals/:goalId/contribute', rateLimit('goal-contribute', { limit: 30, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/gifts', rateLimit('gifts', { limit: 20, windowSeconds: 300 }))
 app.use('/api/users/*', rateLimit('users-public', { limit: 120, windowSeconds: 300 }))
 // Cycle-6 audit: every mutating group gets a cap — paid R2 writes, push fan-out, unbounded
 // inserts, Stripe session creation, thread-create spam, streak-row creation, notification
@@ -183,6 +204,24 @@ app.route('/api/organizations', choreRoutes)
 app.route('/api/organizations', assignmentRoutes)
 app.route('/api/organizations', completionRoutes)
 app.route('/api/households', onboardingRoutes)
+// Breadth resources (built by the feature fleet; all org-scoped under /api/organizations).
+app.route('/api/organizations', rewardRoutes)
+app.route('/api/organizations', goalRoutes)
+app.route('/api/organizations', settlementRoutes)
+app.route('/api/organizations', shoppingRoutes)
+app.route('/api/organizations', quickTaskRoutes)
+app.route('/api/organizations', pollRoutes)
+app.route('/api/organizations', announcementRoutes)
+app.route('/api/organizations', commentRoutes)
+app.route('/api/organizations', challengeRoutes)
+app.route('/api/organizations', competitionRoutes)
+app.route('/api/organizations', giftRoutes)
+app.route('/api/organizations', badgeRoutes)
+app.route('/api/organizations', fairnessRoutes)
+app.route('/api/organizations', reportRoutes)
+app.route('/api/organizations', requestRoutes)
+app.route('/api/organizations', activityRoutes)
+app.route('/api/organizations', mealRoutes)
 
 // Public user profiles — session-gated, safe fields only.
 app.route('/api/users', usersRoutes)
