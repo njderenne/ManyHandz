@@ -390,12 +390,12 @@ export default function CompetitionsScreen() {
           <EmptyState
             icon={Trophy}
             title={
-              tab === 'active' ? 'No active challenges' : tab === 'pending' ? 'Nothing pending' : 'No past challenges'
+              tab === 'active' ? 'No active competitions' : tab === 'pending' ? 'Nothing pending' : 'No past competitions'
             }
             description={
               canCreate && tab === 'active'
                 ? 'Challenge a housemate to a head-to-head and put some points on the line.'
-                : 'Challenges will show up here once they get going.'
+                : 'Competitions will show up here once they get going.'
             }
             action={
               canCreate && tab === 'active' ? (
