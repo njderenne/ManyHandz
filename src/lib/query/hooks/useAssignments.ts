@@ -16,6 +16,7 @@ export type AssignmentWithChore = {
   checklistProgress: { label: string; done: boolean }[]
   status: string
   skipReason?: string | null
+  beforePhotoMediaId: string | null
   createdAt: string
   choreName: string
   choreIcon: string
@@ -72,6 +73,7 @@ export function useCreateAssignment(orgId: string) {
 export type UpdateAssignmentInput = Partial<{
   status: string
   checklistProgress: { label: string; done: boolean }[]
+  beforePhotoMediaId: string | null
   skipReason: string | null
   assignedToMemberId: string
   dueDate: string

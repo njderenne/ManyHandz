@@ -42,6 +42,7 @@ const ASSIGNMENT_STATUSES = ['pending', 'in_progress', 'completed', 'overdue', '
 const patchInput = z.object({
   status: z.enum(ASSIGNMENT_STATUSES).optional(),
   checklistProgress: z.array(z.object({ label: z.string().max(120), done: z.boolean() })).max(30).optional(),
+  beforePhotoMediaId: z.string().max(64).nullish(), // self-service: the assignee's "before" photo
   skipReason: z.string().trim().max(300).nullish(),
   assignedToMemberId: z.string().min(1).max(64).optional(), // reassign (admin)
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // (admin)
@@ -127,6 +128,7 @@ assignmentRoutes.get('/:orgId/assignments/:id', requireOrg, async (c) => {
       checklistProgress: schema.assignment.checklistProgress,
       status: schema.assignment.status,
       skipReason: schema.assignment.skipReason,
+      beforePhotoMediaId: schema.assignment.beforePhotoMediaId,
       createdAt: schema.assignment.createdAt,
       ...choreCols,
     })
@@ -159,8 +161,9 @@ assignmentRoutes.patch('/:orgId/assignments/:id', requireOrg, async (c) => {
   const d = parsed.data
 
   const updates: Record<string, unknown> = {}
-  // Assignee self-service: progress their own work (start/skip + checklist).
+  // Assignee self-service: progress their own work (start/skip + checklist + the before photo).
   if (d.checklistProgress !== undefined) updates.checklistProgress = d.checklistProgress
+  if (d.beforePhotoMediaId !== undefined) updates.beforePhotoMediaId = d.beforePhotoMediaId ?? null
   if (d.status !== undefined) {
     const selfStatuses = ['in_progress', 'skipped', 'pending']
     if (isManager || selfStatuses.includes(d.status)) updates.status = d.status

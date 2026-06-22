@@ -92,7 +92,7 @@ export default function AssignmentDetailScreen() {
   const assignmentId = typeof id === 'string' ? id : ''
   const colors = useColors()
   const { toast } = useToast()
-  const { orgId, ready, features, ui, can } = useHouseholdMode()
+  const { orgId, ready, features, ui, can, household } = useHouseholdMode()
 
   const assignmentQuery = useAssignment(orgId ?? '', assignmentId)
   const membersQuery = useHouseholdMembers(orgId ?? '')
@@ -138,6 +138,7 @@ export default function AssignmentDetailScreen() {
               ui={ui!}
               canComplete={can('markOwnComplete')}
               canPhoto={can('submitPhotoProof')}
+              requirePhotoProof={household?.requirePhotoProof ?? false}
               update={update}
               complete={complete}
               comments={commentsQuery}
@@ -163,6 +164,7 @@ type BodyProps = {
   ui: NonNullable<ReturnType<typeof useHouseholdMode>['ui']>
   canComplete: boolean
   canPhoto: boolean
+  requirePhotoProof: boolean
   update: ReturnType<typeof useUpdateAssignment>
   complete: ReturnType<typeof useCompleteAssignment>
   comments: ReturnType<typeof useComments>
@@ -178,6 +180,9 @@ function AssignmentBody(props: BodyProps) {
   const isDone = assignment.status === 'completed'
   const isWaiting = assignment.status === 'pending_review' || assignment.status === 'snoozed_pending_approval'
   const inProgress = assignment.status === 'in_progress'
+  // Photos only matter when the household requires proof OR the chore is AI-verified. Otherwise no
+  // photo UI appears at all (a plain checklist + notes completion).
+  const needsPhotoProof = props.requirePhotoProof || assignment.aiVerificationEnabled
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [success, setSuccess] = useState<{ points: number; needsApproval: boolean } | null>(null)
@@ -290,6 +295,17 @@ function AssignmentBody(props: BodyProps) {
         </View>
       ) : null}
 
+      {/* Before photo (photo-proof chores only) — captured as you start; shown read-only at completion. */}
+      {needsPhotoProof && props.canPhoto && !isDone && !isWaiting ? (
+        <BeforePhotoCard
+          assignmentId={assignment.id}
+          beforePhotoMediaId={assignment.beforePhotoMediaId}
+          update={props.update}
+          toast={props.toast}
+          colors={colors}
+        />
+      ) : null}
+
       {/* Action affordances — only when the viewer may complete and it isn't already done/waiting */}
       {canComplete && !isDone && !isWaiting ? (
         <View className="gap-2">
@@ -324,6 +340,7 @@ function AssignmentBody(props: BodyProps) {
         assignment={assignment}
         features={features}
         canPhoto={props.canPhoto}
+        needsPhotoProof={needsPhotoProof}
         streak={props.assigneeStreak}
         complete={props.complete}
         toast={props.toast}
@@ -375,21 +392,22 @@ function CompletionSheet(props: {
   assignment: AssignmentWithChore
   features: NonNullable<ReturnType<typeof useHouseholdMode>['features']>
   canPhoto: boolean
+  needsPhotoProof: boolean
   streak: number
   complete: ReturnType<typeof useCompleteAssignment>
   toast: ReturnType<typeof useToast>['toast']
   colors: ReturnType<typeof useColors>
   onCompleted: (points: number, needsApproval: boolean) => void
 }) {
-  const { assignment, features, canPhoto, colors } = props
-  const [before, setBefore] = useState<PhotoSlot>(EMPTY_SLOT)
+  const { assignment, features, canPhoto, needsPhotoProof, colors } = props
   const [after, setAfter] = useState<PhotoSlot>(EMPTY_SLOT)
   const [notes, setNotes] = useState('')
   const [trackTime, setTrackTime] = useState(false)
   const [minutes, setMinutes] = useState(assignment.estimatedMinutes)
   const [mediaDisabled, setMediaDisabled] = useState(false)
 
-  const photoCount = (before.mediaId ? 1 : 0) + (after.mediaId ? 1 : 0)
+  // The "before" was captured at start (on the assignment); here the assignee adds the "after".
+  const photoCount = (assignment.beforePhotoMediaId ? 1 : 0) + (after.mediaId ? 1 : 0)
   const photosArg: 'both' | 'one' | 'none' = photoCount === 2 ? 'both' : photoCount === 1 ? 'one' : 'none'
 
   // Live points preview using the canonical engine (mirrors the server award).
@@ -405,33 +423,33 @@ function CompletionSheet(props: {
     [assignment.difficulty, assignment.estimatedMinutes, trackTime, features.speedBonus, minutes, props.streak, photosArg],
   )
 
-  const showPhotos = canPhoto && !mediaDisabled
+  // Photo proof only shows for chores that need it; the assignee adds the "after" here.
+  const showPhotos = needsPhotoProof && canPhoto && !mediaDisabled
 
-  const attach = async (which: 'before' | 'after', source: 'library' | 'camera') => {
-    const setSlot = which === 'before' ? setBefore : setAfter
+  const attachAfter = async (source: 'library' | 'camera') => {
     const uri = source === 'camera' ? await takePhoto() : await pickImage()
     if (!uri) return
-    setSlot({ uri, mediaId: null, uploading: true })
+    setAfter({ uri, mediaId: null, uploading: true })
     try {
       const media = await uploadMedia(uri)
-      setSlot({ uri, mediaId: media.id, uploading: false })
+      setAfter({ uri, mediaId: media.id, uploading: false })
     } catch (e) {
       if (e instanceof MediaNotConfiguredError) {
         setMediaDisabled(true)
-        setSlot(EMPTY_SLOT)
+        setAfter(EMPTY_SLOT)
         props.toast({ title: 'Photos are not enabled', description: 'You can still finish without a photo.', variant: 'default' })
       } else {
-        setSlot(EMPTY_SLOT)
+        setAfter(EMPTY_SLOT)
         props.toast({ title: "Couldn't upload photo", description: (e as Error).message, variant: 'error' })
       }
     }
   }
 
-  const uploading = before.uploading || after.uploading
+  const uploading = after.uploading
 
   const onSubmit = () => {
     const input: CompleteInput = {
-      beforePhotoMediaId: before.mediaId,
+      beforePhotoMediaId: assignment.beforePhotoMediaId,
       afterPhotoMediaId: after.mediaId,
       notes: notes.trim() || null,
       actualMinutes: trackTime && features.speedBonus ? minutes : null,
@@ -467,13 +485,24 @@ function CompletionSheet(props: {
           </CardContent>
         </Card>
 
-        {/* Before/after photos (degrade gracefully on web / when media disabled) */}
+        {/* Photo proof — the "before" (captured at start, read-only) + the "after" (added here). */}
         {showPhotos ? (
           <View className="gap-2">
-            <Text variant="label">Photos (optional)</Text>
+            <Text variant="label">Photo proof</Text>
             <View className="flex-row gap-3">
-              <PhotoTile label="Before" slot={before} colors={colors} onPick={() => attach('before', 'library')} onShoot={() => attach('before', 'camera')} />
-              <PhotoTile label="After" slot={after} colors={colors} onPick={() => attach('after', 'library')} onShoot={() => attach('after', 'camera')} />
+              <View className="flex-1 gap-1.5">
+                <Text variant="caption">Before</Text>
+                <View className="aspect-square overflow-hidden rounded-xl border border-border bg-card">
+                  {assignment.beforePhotoMediaId ? (
+                    <MediaImage mediaId={assignment.beforePhotoMediaId} mimeType="image/jpeg" style={{ width: '100%', height: '100%' }} />
+                  ) : (
+                    <View className="flex-1 items-center justify-center px-2">
+                      <Text variant="caption" className="text-center">No before photo</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <PhotoTile label="After" slot={after} colors={colors} onPick={() => attachAfter('library')} onShoot={() => attachAfter('camera')} />
             </View>
           </View>
         ) : null}
@@ -547,6 +576,63 @@ function PhotoTile({
         <Button size="sm" variant="outline" icon={Camera} className="flex-1" onPress={onShoot} accessibilityLabel={`Take ${label} photo`} />
       </View>
     </View>
+  )
+}
+
+/** Before-photo capture (photo-proof chores) — taken as you START the chore; the "after" is added at
+ *  completion. Uploads, then PATCHes assignment.beforePhotoMediaId (assignee self-service). */
+function BeforePhotoCard(props: {
+  assignmentId: string
+  beforePhotoMediaId: string | null
+  update: ReturnType<typeof useUpdateAssignment>
+  toast: ReturnType<typeof useToast>['toast']
+  colors: ReturnType<typeof useColors>
+}) {
+  const [uploading, setUploading] = useState(false)
+  const capture = async (source: 'library' | 'camera') => {
+    const uri = source === 'camera' ? await takePhoto() : await pickImage()
+    if (!uri) return
+    setUploading(true)
+    try {
+      const media = await uploadMedia(uri)
+      props.update.mutate({ id: props.assignmentId, input: { beforePhotoMediaId: media.id } })
+    } catch (e) {
+      if (e instanceof MediaNotConfiguredError) {
+        props.toast({ title: 'Photos are not enabled', description: 'You can finish without one.', variant: 'default' })
+      } else {
+        props.toast({ title: "Couldn't upload photo", description: (e as Error).message, variant: 'error' })
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+  return (
+    <Card>
+      <CardContent className="gap-3 py-4">
+        <View className="flex-row items-center gap-2">
+          <Camera color={props.colors.primary} size={18} />
+          <Text variant="label">Before photo</Text>
+        </View>
+        <Text variant="caption">Snap a quick &quot;before&quot; now — you&apos;ll add the &quot;after&quot; when you finish.</Text>
+        {props.beforePhotoMediaId ? (
+          <View className="aspect-video overflow-hidden rounded-xl border border-border bg-card">
+            <MediaImage mediaId={props.beforePhotoMediaId} mimeType="image/jpeg" style={{ width: '100%', height: '100%' }} />
+          </View>
+        ) : null}
+        <View className="flex-row gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            icon={ImageIcon}
+            label={props.beforePhotoMediaId ? 'Replace' : 'Choose'}
+            className="flex-1"
+            loading={uploading}
+            onPress={() => capture('library')}
+          />
+          <Button size="sm" variant="outline" icon={Camera} label="Camera" className="flex-1" loading={uploading} onPress={() => capture('camera')} />
+        </View>
+      </CardContent>
+    </Card>
   )
 }
 

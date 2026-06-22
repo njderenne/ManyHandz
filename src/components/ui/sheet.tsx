@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Keyboard, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Animated, {
   interpolate,
@@ -15,14 +15,17 @@ import { useColors } from '@/lib/config/theme'
 import { Text } from './text'
 
 /**
- * SheetModal — a true draggable bottom sheet we own (no @gorhom dependency).
+ * SheetModal — a bottom sheet with TWO implementations behind one API:
+ *  - NATIVE (NativeSheet): a true draggable sheet we own (no @gorhom dependency) — pans on the UI
+ *    thread (Gesture Handler + Reanimated), springs between `snapPoints`, closes on a fling, a drag
+ *    past the lowest snap, a backdrop tap, or the back button; the backdrop fades with drag and the
+ *    sheet lifts above the keyboard.
+ *  - WEB (WebSheet): a plain opaque bottom panel. react-native-web doesn't reliably PAINT the
+ *    gesture sheet (the page bleeds through it), and the native build's idle Reanimated worklets
+ *    churn the compositor on web.
  *
- * Controlled via `visible` + `onClose` (the same API as Dialog/ActionSheet, so swapping between
- * them is a one-word change). The sheet pans on the UI thread (Gesture Handler + Reanimated shared
- * values, same pattern as slider.tsx), springs between `snapPoints` (fractions of the window
- * height, e.g. [0.4, 0.9]), and closes on a downward fling, a drag past the lowest snap, a
- * backdrop tap, or the hardware back button. The backdrop fades with drag progress, and the sheet
- * lifts above the keyboard so inputs inside stay visible.
+ * The split is at the COMPONENT boundary (not an inline branch) so the native Reanimated/Gesture
+ * hooks are NEVER mounted on web. Controlled via `visible` + `onClose` (same API as Dialog/ActionSheet).
  *
  * Use ActionSheet for simple tap-a-row menus; use SheetModal when content needs height, dragging
  * between detents, or keyboard interaction.
@@ -30,7 +33,7 @@ import { Text } from './text'
 export type SheetModalProps = {
   visible: boolean
   onClose: () => void
-  /** Snap detents as fractions of the window height, ascending. Opens at the first one. */
+  /** Snap detents as fractions of the window height, ascending. Opens at the first one. (Native only.) */
   snapPoints?: number[]
   title?: string
   /** Show the upper-right close (✕) button. Default true — every window closes the same two ways. */
@@ -41,7 +44,59 @@ export type SheetModalProps = {
 
 const SPRING = { damping: 28, stiffness: 320, mass: 0.9 }
 
-export function SheetModal({
+export function SheetModal(props: SheetModalProps) {
+  return Platform.OS === 'web' ? <WebSheet {...props} /> : <NativeSheet {...props} />
+}
+
+/**
+ * Web fallback: a dimmed backdrop + a solid bg-card panel anchored to the bottom, content in a
+ * ScrollView. No gestures, no worklets — nothing that can fail to occlude the page or churn the
+ * compositor. (The native sheet, rendered on web, did both.)
+ */
+function WebSheet({ visible, onClose, title, showClose = true, children, className }: SheetModalProps) {
+  const colors = useColors()
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable
+        onPress={onClose}
+        style={StyleSheet.absoluteFill}
+        accessibilityRole="button"
+        accessibilityLabel="Close sheet"
+        className="bg-black/60"
+      />
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill} className="items-center justify-end">
+        <View
+          className={cn('w-full max-w-xl overflow-hidden rounded-t-2xl border-t border-border bg-card', className)}
+          style={{ maxHeight: '88%' }}
+        >
+          <View className="flex-row items-start justify-between px-4 pt-4">
+            {title ? (
+              <Text variant="muted" className="flex-1 pt-1.5 uppercase tracking-wider">
+                {title}
+              </Text>
+            ) : (
+              <View className="flex-1" />
+            )}
+            {showClose ? (
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={8}
+                className="size-9 items-center justify-center rounded-full active:bg-accent"
+              >
+                <X size={20} color={colors.mutedForeground} />
+              </Pressable>
+            ) : null}
+          </View>
+          <ScrollView className="px-4" contentContainerClassName="pb-9 pt-2">{children}</ScrollView>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
+function NativeSheet({
   visible,
   onClose,
   snapPoints = [0.5, 0.9],
@@ -56,8 +111,7 @@ export function SheetModal({
   const [mounted, setMounted] = useState(visible)
 
   // Sheet height = the tallest detent; translateY positions it (0 = fully open, sheetH = hidden).
-  // Keyed on the *contents* of snapPoints so inline arrays don't re-trigger the open spring
-  // (and yank the sheet back to the first detent) every time the parent re-renders.
+  // Keyed on the *contents* of snapPoints so inline arrays don't re-trigger the open spring every render.
   const snapKey = snapPoints.join(',')
   const fractions = useMemo(
     () => (snapPoints.length ? [...snapPoints].sort((a, b) => a - b) : [0.5]),
@@ -136,10 +190,7 @@ export function SheetModal({
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       {/* Gestures inside a Modal need their own root view on Android. */}
       <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-        <Animated.View
-          className="bg-black/60"
-          style={[StyleSheet.absoluteFill, backdropStyle]}
-        />
+        <Animated.View className="bg-black/60" style={[StyleSheet.absoluteFill, backdropStyle]} />
         <Pressable
           onPress={onClose}
           style={StyleSheet.absoluteFill}

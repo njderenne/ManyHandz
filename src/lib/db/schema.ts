@@ -1009,6 +1009,9 @@ export const assignment = pgTable(
     // pending | in_progress | completed | overdue | skipped | pending_review | snoozed_pending_approval
     status: text('status').notNull().default('pending'),
     skipReason: text('skip_reason'),
+    /** Optional "before" photo, captured WHEN THE CHORE IS STARTED (photo-proof flow). The "after"
+     *  photo is captured at completion and lives on the completion row; this pairs with it. */
+    beforePhotoMediaId: text('before_photo_media_id').references(() => media.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

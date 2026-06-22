@@ -1,0 +1,2 @@
+ALTER TABLE "assignment" ADD COLUMN "before_photo_media_id" text;--> statement-breakpoint
+ALTER TABLE "assignment" ADD CONSTRAINT "assignment_before_photo_media_id_media_id_fk" FOREIGN KEY ("before_photo_media_id") REFERENCES "public"."media"("id") ON DELETE set null ON UPDATE no action;
