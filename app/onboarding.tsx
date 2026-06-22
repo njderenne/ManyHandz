@@ -9,6 +9,7 @@ import { APP_CONFIG } from '@/lib/config/app'
 import { useColors } from '@/lib/config/theme'
 import { selectableModes, type HouseholdMode } from '@/lib/config/modes'
 import { useCreateHousehold, useJoinHousehold } from '@/lib/hooks/useOnboarding'
+import { SignedInAs } from '@/components/auth/signed-in-as'
 import { useToast } from '@/components/ui/toast'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
@@ -78,6 +79,10 @@ export default function OnboardingScreen() {
               <Text variant="h1">Welcome to {APP_CONFIG.name}</Text>
               <Text variant="muted">Create your household, or join one with an invite code.</Text>
             </View>
+
+            {/* Who you're signed in as — so a wrong login is obvious, with a one-tap way out. If you
+                expected to already have a household, you may be signed in to the wrong account. */}
+            <SignedInAs />
 
             <View className="flex-row gap-2">
               <Button className="flex-1" variant={tab === 'create' ? 'default' : 'outline'} label="Create" onPress={() => setTab('create')} />

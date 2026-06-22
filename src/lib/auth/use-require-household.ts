@@ -10,15 +10,18 @@ import { isPublicRoute } from '@/lib/config/navigation'
  * so it can't trap a user or fight the auth gate.
  */
 export function useRequireHousehold() {
-  const { data: orgs, isPending } = authClient.useListOrganizations()
+  const { data: orgs, isPending, error } = authClient.useListOrganizations()
   const pathname = usePathname()
   const router = useRouter()
 
   useEffect(() => {
-    if (isPending) return
+    // Fail-open while loading OR if the org list errored — a transient/auth hiccup must never strand a
+    // member who actually HAS a household on the create-household screen. Only a confirmed-empty list
+    // (loaded, no error, zero orgs) is a real "no household".
+    if (isPending || error) return
     const hasHousehold = Array.isArray(orgs) && orgs.length > 0
     if (!hasHousehold && !pathname.startsWith('/onboarding') && !isPublicRoute(pathname)) {
       router.replace('/onboarding')
     }
-  }, [isPending, orgs, pathname, router])
+  }, [isPending, error, orgs, pathname, router])
 }
