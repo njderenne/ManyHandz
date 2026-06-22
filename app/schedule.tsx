@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { View, Pressable, ScrollView } from 'react-native'
+import { View, Pressable, ScrollView, useWindowDimensions } from 'react-native'
 import { Stack } from 'expo-router'
 import { CalendarDays, ChevronLeft, ChevronRight, Check, Plus, SkipForward } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { Grid } from '@/components/ui/grid'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { ActionSheet } from '@/components/ui/action-sheet'
 import { Dialog } from '@/components/ui/dialog'
@@ -368,25 +369,30 @@ function dotColor(member: HouseholdMember | undefined, useAccent: boolean, fallb
 
 function WeekGrid({ start, byDay, memberById, useAccent, onSelectDay, colors }: GridProps) {
   const todayIso = ISO(new Date())
+  const { width } = useWindowDimensions()
+  // Phone: 3 square cards per row (3+3+1) — far better than 7 tall, skinny columns. Wider screens
+  // (tablet/web) get the full 7-day strip, where 7 cells are comfortably sized. The chassis <Grid>
+  // handles the equal-width wrapping either way.
+  const columns = width >= 640 ? 7 : 3
   return (
-    <View className="flex-row gap-1.5">
+    <Grid columns={columns}>
       {Array.from({ length: 7 }, (_, i) => {
         const date = addDays(start, i)
         const iso = ISO(date)
         const items = byDay.get(iso) ?? []
         const isToday = iso === todayIso
         return (
-          <Pressable key={iso} onPress={() => onSelectDay(iso)} className="flex-1 active:opacity-70" accessibilityRole="button" accessibilityLabel={`${DOW[i]} ${date.getDate()}, ${items.length} chores`}>
-            <View className={cn('min-h-32 gap-1 rounded-lg border bg-card p-1.5', isToday ? 'border-primary' : 'border-border')}>
-              <View className="items-center">
+          <Pressable key={iso} onPress={() => onSelectDay(iso)} className="active:opacity-70" accessibilityRole="button" accessibilityLabel={`${DOW[i]} ${date.getDate()}, ${items.length} chores`}>
+            <View className={cn('aspect-square gap-1.5 rounded-xl border bg-card p-2.5', isToday ? 'border-primary' : 'border-border')}>
+              <View className="flex-row items-baseline justify-between">
                 <Text variant="caption">{DOW[i]}</Text>
-                <Text variant="label" className={cn(isToday && 'text-primary')}>{date.getDate()}</Text>
+                <Text variant="label" className={cn('text-base', isToday && 'text-primary')}>{date.getDate()}</Text>
               </View>
-              <View className="gap-1">
-                {items.slice(0, 4).map((a) => {
+              <View className="flex-1 gap-1">
+                {items.slice(0, 3).map((a) => {
                   const color = dotColor(memberById.get(a.assignedToMemberId), useAccent, colors.mutedForeground)
                   return (
-                    <View key={a.id} className="flex-row items-center gap-1 rounded-md bg-accent/60 px-1 py-0.5">
+                    <View key={a.id} className="flex-row items-center gap-1 rounded-md bg-accent/60 px-1.5 py-1">
                       <View className="size-1.5 rounded-full" style={{ backgroundColor: color }} />
                       <Text variant="caption" numberOfLines={1} className={cn('flex-1', isDone(a.status) && 'line-through opacity-60')}>
                         {a.choreName}
@@ -394,13 +400,13 @@ function WeekGrid({ start, byDay, memberById, useAccent, onSelectDay, colors }: 
                     </View>
                   )
                 })}
-                {items.length > 4 ? <Text variant="caption" className="px-1">+{items.length - 4} more</Text> : null}
+                {items.length > 3 ? <Text variant="caption" className="px-0.5">+{items.length - 3} more</Text> : null}
               </View>
             </View>
           </Pressable>
         )
       })}
-    </View>
+    </Grid>
   )
 }
 
