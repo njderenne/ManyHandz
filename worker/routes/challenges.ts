@@ -136,6 +136,14 @@ challengeRoutes.post('/:orgId/challenges', requireOrg, requirePermission('create
       createdByMemberId: memberId,
     })
     .returning()
+
+  // Backstop the check-then-act race (no transaction on the HTTP driver): if a concurrent create also
+  // produced an active double_points window, void the one we just made so the invariant holds.
+  if (d.challengeType === 'double_points' && (await hasActiveDoublePoints(c.env, orgId, row.id))) {
+    await getDb(c.env.DATABASE_URL).update(schema.bonusChallenge).set({ status: 'expired' }).where(eq(schema.bonusChallenge.id, row.id))
+    return c.json({ error: 'a double-points challenge is already active' }, 409)
+  }
+
   await audit(c, {
     entityType: 'bonus_challenge',
     entityId: row.id,

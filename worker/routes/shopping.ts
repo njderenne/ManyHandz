@@ -145,7 +145,8 @@ export function categorizeItem(name: string): ShoppingCategory {
   const haystack = ` ${name.toLowerCase().trim()} `
   for (const { category, keywords } of CATEGORY_KEYWORDS) {
     for (const kw of keywords) {
-      if (haystack.includes(` ${kw} `) || haystack.includes(`${kw}s `) || haystack.includes(` ${kw}`)) {
+      // Boundary-anchored on BOTH sides (exact word + simple plural) so "ham" doesn't match "hammer".
+      if (haystack.includes(` ${kw} `) || haystack.includes(` ${kw}s `)) {
         return category
       }
     }

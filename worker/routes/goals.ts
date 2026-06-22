@@ -268,6 +268,9 @@ goalRoutes.post('/:orgId/goals/:goalId/contribute', requireOrg, async (c) => {
     .limit(1)
   if (!goal) return c.json({ error: 'not found' }, 404)
   if (goal.status !== 'active') return c.json({ error: 'goal is not active' }, 409)
+  // You contribute YOUR OWN points into YOUR OWN goal — a member (incl. a kid) cannot force-advance
+  // someone else's goal. (Parent "boost a kid's goal" would be a separate, explicit feature.)
+  if (goal.memberId !== ctx.memberId) return c.json({ error: 'forbidden — not your goal' }, 403)
 
   // Resolve the contributor's userId (creditLedger is user-scoped; the goal is member-scoped).
   const [me] = await db

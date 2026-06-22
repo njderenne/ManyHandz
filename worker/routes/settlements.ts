@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
+import { can } from '@/lib/config/modes'
 import { requireOrg, audit } from '../middleware/org'
 import { resolveHousehold, type HouseholdEnv } from '../household'
 
@@ -162,6 +163,11 @@ settlementRoutes.post('/:orgId/settlements', requireOrg, async (c) => {
   const d = parsed.data
 
   const fromMemberId = d.fromMemberId ?? ctx.memberId
+  // Filing a debt against SOMEONE ELSE is an admin action. (Family already blocks non-parents above
+  // and roommates are all peers; this defends the on-behalf path for non-admin roles in other modes.)
+  if (d.fromMemberId && d.fromMemberId !== ctx.memberId && !can(ctx.mode, ctx.householdRole, 'changeRoles')) {
+    return c.json({ error: 'forbidden — only an admin can file on another member’s behalf' }, 403)
+  }
   if (fromMemberId === d.toMemberId) return c.json({ error: 'a member cannot owe themselves' }, 400)
   if (!(await memberOk(c.env, ctx.orgId, fromMemberId))) return c.json({ error: 'invalid from member' }, 400)
   if (!(await memberOk(c.env, ctx.orgId, d.toMemberId))) return c.json({ error: 'invalid to member' }, 400)

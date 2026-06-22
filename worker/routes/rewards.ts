@@ -172,6 +172,28 @@ rewardRoutes.post('/:orgId/rewards/:rewardId/redeem', requireOrg, requirePermiss
     })
     .onConflictDoNothing({ target: schema.creditLedger.idempotencyKey })
 
+  // 2b. Guard the check-then-act race (the HTTP driver has no transaction): re-derive the balance
+  //     AFTER the deduct and roll back if a concurrent/duplicate redeem drove it negative. This
+  //     prevents a member from redeeming the same reward N times before any single deduct lands.
+  const postBalance = await pointsBalance(c.env, ctx.orgId, userId)
+  if (postBalance < 0) {
+    await db
+      .insert(schema.creditLedger)
+      .values({
+        organizationId: ctx.orgId,
+        userId,
+        kind: POINTS_KIND,
+        delta: reward.pointsCost, // reverse the deduct
+        reason: 'reward_redemption_rollback',
+        entityType: 'reward_redemption',
+        entityId: redemption.id,
+        idempotencyKey: `reward_redemption_rollback:${redemption.id}`,
+      })
+      .onConflictDoNothing({ target: schema.creditLedger.idempotencyKey })
+    await db.delete(schema.rewardRedemption).where(eq(schema.rewardRedemption.id, redemption.id))
+    return c.json({ error: 'insufficient points', balance: postBalance + reward.pointsCost, required: reward.pointsCost }, 400)
+  }
+
   // 3. Family mode: auto-create a settlement for a parent to fulfill (the kid is OWED the reward).
   let settlementId: string | null = null
   if (ctx.mode === 'family') {

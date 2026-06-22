@@ -117,6 +117,12 @@ export async function runOverdue(db: Db): Promise<number> {
  *  via the ledger (winner +stakes, loser −stakes floored at 0). Idempotent on the competition id. */
 export async function runCompetitions(db: Db): Promise<number> {
   const now = new Date()
+  // Expire never-accepted invites whose window has already passed (otherwise they linger in 'pending').
+  await db
+    .update(schema.competition)
+    .set({ status: 'expired' })
+    .where(and(eq(schema.competition.status, 'pending'), lt(schema.competition.endsAt, now)))
+
   const comps = await db
     .select()
     .from(schema.competition)
@@ -134,7 +140,7 @@ export async function runCompetitions(db: Db): Promise<number> {
       const ms = await db
         .select({ id: schema.member.id, userId: schema.member.userId })
         .from(schema.member)
-        .where(inArray(schema.member.id, [winnerId, loserId]))
+        .where(and(eq(schema.member.organizationId, comp.organizationId), inArray(schema.member.id, [winnerId, loserId])))
       const winnerUser = ms.find((m) => m.id === winnerId)?.userId
       const loserUser = ms.find((m) => m.id === loserId)?.userId
 

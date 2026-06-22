@@ -193,17 +193,33 @@ badgeRoutes.patch('/:orgId/badges/:badgeId', requireOrg, requirePermission('crea
   const parsed = badgeUpdate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
-  if (!(await categoryOk(c.env, orgId, d.criteriaCategoryId))) return c.json({ error: 'invalid category' }, 400)
 
-  // Build the update from only the keys the client actually sent (PATCH semantics).
+  // Load the existing badge so we can validate the EFFECTIVE (post-merge) criteria — a PATCH must not
+  // be able to persist a shape that POST would reject (e.g. switching type without fixing target/category).
+  const [existing] = await getDb(c.env.DATABASE_URL)
+    .select()
+    .from(schema.customBadge)
+    .where(and(eq(schema.customBadge.id, badgeId), eq(schema.customBadge.organizationId, orgId), eq(schema.customBadge.isActive, true)))
+    .limit(1)
+  if (!existing) return c.json({ error: 'not found' }, 404)
+
+  const effType = (d.criteriaType ?? existing.criteriaType) as BadgeCriteriaType
+  const effTarget = d.criteriaTarget !== undefined ? d.criteriaTarget : existing.criteriaTarget
+  const effCategoryId = d.criteriaCategoryId !== undefined ? d.criteriaCategoryId : existing.criteriaCategoryId
+  const shapeErr = criteriaShapeOk(effType, effTarget, effCategoryId)
+  if (shapeErr) return c.json({ error: shapeErr }, 400)
+  if (!(await categoryOk(c.env, orgId, effCategoryId))) return c.json({ error: 'invalid category' }, 400)
+
+  // Build the update from only the keys the client sent (PATCH semantics), but COUPLE the criteria
+  // fields to the effective type the way create does (manual → no target; non-category → no category).
   const updates: Partial<typeof schema.customBadge.$inferInsert> = {}
   if (d.name !== undefined) updates.name = d.name
   if (d.description !== undefined) updates.description = d.description
   if (d.icon !== undefined) updates.icon = d.icon
   if (d.color !== undefined) updates.color = d.color
   if (d.criteriaType !== undefined) updates.criteriaType = d.criteriaType
-  if (d.criteriaTarget !== undefined) updates.criteriaTarget = d.criteriaTarget ?? null
-  if (d.criteriaCategoryId !== undefined) updates.criteriaCategoryId = d.criteriaCategoryId ?? null
+  if (d.criteriaType !== undefined || d.criteriaTarget !== undefined) updates.criteriaTarget = effType === 'manual' ? null : effTarget ?? null
+  if (d.criteriaType !== undefined || d.criteriaCategoryId !== undefined) updates.criteriaCategoryId = effType === 'category_count' ? effCategoryId ?? null : null
   if (Object.keys(updates).length === 0) return c.json({ error: 'no fields to update' }, 400)
 
   const [row] = await getDb(c.env.DATABASE_URL)

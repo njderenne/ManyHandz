@@ -92,7 +92,7 @@ requestRoutes.post('/:orgId/assignments/:assignmentId/snooze', requireOrg, async
   if (a.snoozeCount >= MAX_SNOOZES) {
     return c.json({ error: `already snoozed the maximum of ${MAX_SNOOZES} times` }, 409)
   }
-  if (compareDate(d.newDueDate, original) <= 0) {
+  if (compareDate(d.newDueDate, a.dueDate) <= 0) {
     return c.json({ error: 'the new due date must be later than the current due date' }, 400)
   }
   if (compareDate(d.newDueDate, shiftDate(original, MAX_DAYS_PAST_ORIGINAL)) > 0) {
