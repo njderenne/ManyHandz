@@ -1,4 +1,4 @@
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { X } from 'lucide-react-native'
@@ -9,13 +9,14 @@ import { Text } from './text'
 /**
  * Dialog — a centered modal for confirmations and short forms.
  *
- * Closes three consistent ways (matching ActionSheet/SheetModal so every window behaves alike): tap
- * the scrim, tap the upper-right ✕, or drag the card down past a threshold (it tracks the finger and
- * springs back if you don't commit). Provide `title`/`description` and compose actions as children.
+ * TWO implementations behind one API (same split as SheetModal/ActionSheet): NATIVE is the
+ * flick-to-dismiss Reanimated card; WEB is a plain centered card. On react-native-web a Reanimated
+ * `Animated.View` doesn't apply its `bg-card` className — the card renders TRANSPARENT and the page
+ * shows through it. The split is at the COMPONENT boundary so the native Reanimated/Gesture hooks
+ * never mount on web.
  *
- * Structure matters: the closing scrim is a SIBLING behind the card, never its parent — an
- * accessible Pressable wrapping the card becomes a leaf a11y element on iOS and hides the
- * dialog's content from VoiceOver entirely (sheet.tsx uses the same sibling layout).
+ * Closes three consistent ways (matching ActionSheet/SheetModal): tap the scrim, tap the upper-right
+ * ✕, or (native) flick the card down. Provide `title`/`description` and compose actions as children.
  */
 export type DialogProps = {
   visible: boolean
@@ -30,15 +31,45 @@ export type DialogProps = {
 
 const SPRING = { damping: 26, stiffness: 320, mass: 0.9 }
 
-export function Dialog({
-  visible,
-  onClose,
-  title,
-  description,
-  showClose = true,
-  children,
-  className,
-}: DialogProps) {
+export function Dialog(props: DialogProps) {
+  return Platform.OS === 'web' ? <WebDialog {...props} /> : <NativeDialog {...props} />
+}
+
+/** Web fallback: a dimmed backdrop + a plain OPAQUE centered card (no Animated.View, so bg-card sticks). */
+function WebDialog({ visible, onClose, title, description, showClose = true, children, className }: DialogProps) {
+  const colors = useColors()
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable
+        onPress={onClose}
+        style={StyleSheet.absoluteFill}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        className="bg-black/60"
+      />
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill} className="flex-1 items-center justify-center p-6">
+        <View className={cn('w-full max-w-sm gap-3 rounded-xl border border-border bg-card p-5', className)}>
+          {showClose ? (
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
+              className="absolute right-2 top-2 z-10 size-9 items-center justify-center rounded-full active:bg-accent"
+            >
+              <X size={20} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+          {title ? <Text variant="h3" className={showClose ? 'pr-8' : undefined}>{title}</Text> : null}
+          {description ? <Text variant="muted">{description}</Text> : null}
+          {children}
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
+function NativeDialog({ visible, onClose, title, description, showClose = true, children, className }: DialogProps) {
   const colors = useColors()
   const translateY = useSharedValue(0)
 
