@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { View, Pressable, ScrollView } from 'react-native'
 import { Stack } from 'expo-router'
-import { CalendarDays, ChevronLeft, ChevronRight, Check, SkipForward } from 'lucide-react-native'
+import { CalendarDays, ChevronLeft, ChevronRight, Check, Plus, SkipForward } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { ActionSheet } from '@/components/ui/action-sheet'
+import { Dialog } from '@/components/ui/dialog'
+import { MemberPicker } from '@/components/ui/member-picker'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/components/ui/toast'
@@ -17,10 +19,11 @@ import { useColors } from '@/lib/config/theme'
 import { cn } from '@/lib/utils'
 import { useHouseholdMode } from '@/lib/hooks/useHouseholdMode'
 import { useHouseholdMembers, type HouseholdMember } from '@/lib/query/hooks/useHousehold'
-import { useChoreCategories } from '@/lib/query/hooks/useChores'
+import { useChoreCategories, useChores } from '@/lib/query/hooks/useChores'
 import {
   useAssignments,
   useUpdateAssignment,
+  useCreateAssignment,
   type AssignmentWithChore,
 } from '@/lib/query/hooks/useAssignments'
 import { accentHex } from '@/lib/manyhandz/accents'
@@ -83,6 +86,10 @@ export default function ScheduleScreen() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [openDay, setOpenDay] = useState<string | null>(null)
+  // Quick-assign from a calendar day: pick a chore + member; due date = the tapped day.
+  const [quickAssignDate, setQuickAssignDate] = useState<string | null>(null)
+  const [qaChore, setQaChore] = useState<string | null>(null)
+  const [qaMember, setQaMember] = useState<string | null>(null)
 
   // The visible range: 7 days for week, the full 6-row month grid for month.
   const rangeStart = useMemo(
@@ -102,6 +109,9 @@ export default function ScheduleScreen() {
     ...(statusFilter ? { status: statusFilter } : {}),
   })
   const update = useUpdateAssignment(orgId ?? '')
+  const chores = useChores(orgId ?? '')
+  const createAssignment = useCreateAssignment(orgId ?? '')
+  const canAssign = can('assignChores')
 
   const memberById = useMemo(() => {
     const map = new Map<string, HouseholdMember>()
@@ -175,6 +185,23 @@ export default function ScheduleScreen() {
   ]
 
   const openDayItems = openDay ? (byDay.get(openDay) ?? []) : []
+
+  const choreOptions = (chores.data ?? []).map((c) => ({ label: c.name, value: c.id }))
+  const submitQuickAssign = () => {
+    if (!quickAssignDate || !qaChore || !qaMember) return
+    createAssignment.mutate(
+      { choreId: qaChore, assignedToMemberId: qaMember, dueDate: quickAssignDate },
+      {
+        onSuccess: () => {
+          setQuickAssignDate(null)
+          setQaChore(null)
+          setQaMember(null)
+          toast({ title: 'Chore assigned', variant: 'success' })
+        },
+        onError: (e) => toast({ title: "Couldn't assign", description: (e as Error).message, variant: 'error' }),
+      },
+    )
+  }
 
   return (
     <>
@@ -257,6 +284,19 @@ export default function ScheduleScreen() {
         onClose={() => setOpenDay(null)}
         title={openDay ? new Date(`${openDay}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }) : undefined}
       >
+        {canAssign ? (
+          <Button
+            variant="outline"
+            icon={Plus}
+            label="Assign a chore to this day"
+            className="mb-3"
+            onPress={() => {
+              const day = openDay
+              setOpenDay(null) // close the sheet first, then open the assign dialog (avoid stacked modals)
+              setQuickAssignDate(day)
+            }}
+          />
+        ) : null}
         {openDayItems.length === 0 ? (
           <EmptyState icon={CalendarDays} title="Nothing scheduled" description="No chores fall on this day." />
         ) : (
@@ -279,6 +319,34 @@ export default function ScheduleScreen() {
           </ScrollView>
         )}
       </ActionSheet>
+
+      {/* Quick-assign — pick a chore + member; the tapped day is the due date. */}
+      <Dialog
+        visible={quickAssignDate !== null}
+        onClose={() => setQuickAssignDate(null)}
+        title="Assign a chore"
+        description={
+          quickAssignDate
+            ? `Due ${new Date(`${quickAssignDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}.`
+            : undefined
+        }
+      >
+        <View className="gap-4 pt-1">
+          <Select
+            label="Chore"
+            placeholder="Pick a chore"
+            options={choreOptions}
+            value={qaChore ?? undefined}
+            onValueChange={setQaChore}
+            searchable={choreOptions.length > 8}
+          />
+          <MemberPicker orgId={orgId ?? ''} label="Assign to" value={qaMember} onChange={setQaMember} />
+          <View className="flex-row justify-end gap-3">
+            <Button variant="outline" label="Cancel" onPress={() => setQuickAssignDate(null)} />
+            <Button label="Assign" loading={createAssignment.isPending} disabled={!qaChore || !qaMember} onPress={submitQuickAssign} />
+          </View>
+        </View>
+      </Dialog>
     </>
   )
 }
