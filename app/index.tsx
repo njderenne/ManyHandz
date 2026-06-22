@@ -54,11 +54,49 @@ function timeAgo(value: string | Date): string {
   return date.toLocaleDateString()
 }
 
-/** Humanize an activity_log row into a short line (entityType + action, e.g. "completed a chore"). */
+/**
+ * Activity actions (`{entity}.{verb}`, sometimes `{entity}_{verb}`) → a plain-English line. Known
+ * actions get a hand-written phrase; anything else falls back to "{Verb} a {noun}" (proper case, no
+ * leftover dots/underscores) so the feed never reads like "Chore.created chore".
+ */
+const ACTIVITY_PHRASES: Record<string, string> = {
+  'chore.created': 'Added a chore',
+  'chore.updated': 'Updated a chore',
+  'chore.deleted': 'Removed a chore',
+  'category.created': 'Added a category',
+  'assignment.created': 'Assigned a chore',
+  'assignment.updated': 'Updated an assignment',
+  chore_completed: 'Completed a chore',
+  'completion.approved': 'Approved a chore',
+  'completion.rejected': 'Sent a chore back',
+  'rotation.created': 'Set up a rotation',
+  'rotation.stopped': 'Stopped a rotation',
+  'reward.created': 'Added a reward',
+  'reward.updated': 'Updated a reward',
+  'reward.deleted': 'Removed a reward',
+  'reward_redemption.created': 'Redeemed a reward',
+  'reward_redemption.approved': 'Fulfilled a reward',
+  'goal.created': 'Created a goal',
+  'goal.completed': 'Reached a goal',
+  'gift.created': 'Gifted points',
+  'settlement.created': 'Logged a payback',
+  'competition.created': 'Started a competition',
+  'competition.accepted': 'Accepted a challenge',
+  'challenge.created': 'Started a challenge',
+  'poll.created': 'Started a poll',
+  'announcement.created': 'Posted an announcement',
+  'badge.awarded': 'Earned a badge',
+}
+
 function activityLabel(e: ActivityFeedEntry): string {
-  const action = e.action.replace(/[_-]+/g, ' ')
-  const entity = e.entityType.replace(/[_-]+/g, ' ')
-  return `${action.charAt(0).toUpperCase()}${action.slice(1)} ${entity}`.trim()
+  const mapped = ACTIVITY_PHRASES[e.action]
+  if (mapped) return mapped
+  // Fallback: "{entity}.{verb}" / "{entity}_{verb}" → "{Verb} a {noun}". entityType is the cleaner noun.
+  const parts = e.action.split(/[._-]+/).filter(Boolean)
+  const verb = parts[parts.length - 1] ?? e.action
+  const noun = e.entityType.replace(/[_-]+/g, ' ').trim() || parts[0] || 'item'
+  const article = /^[aeiou]/i.test(noun) ? 'an' : 'a'
+  return `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${article} ${noun}`
 }
 
 export default function Dashboard() {
