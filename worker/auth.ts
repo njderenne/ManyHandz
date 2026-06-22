@@ -91,6 +91,7 @@ export function createAuth(env: Env) {
       env.BETTER_AUTH_URL,
       'manyhandz://', // native OAuth deep-link scheme — must match app.json `scheme`
       'http://localhost:8081', // Expo web dev server
+      'http://localhost:4546', // static dist preview (manyhandz-dist) — dev QA only
     ],
   })
 }

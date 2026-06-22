@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { validateEnv, type Env } from './env'
 import { getAuth } from './auth'
 import { VERSION } from './version'
@@ -73,6 +74,25 @@ app.onError((err, c) => {
     }),
   )
   return c.json({ error: 'internal error' }, 500)
+})
+
+// Dev-only CORS: let a LOCAL web build (static dist on :4546 / Expo web on :8081) reach this
+// deployed API for browser QA. NEVER fires in production — the SPA is served same-origin there, so a
+// real user's requests never carry a cross-origin Origin in this allowlist. Registered before the
+// auth + route handlers so it also covers /api/auth/* and the preflight OPTIONS.
+const DEV_ORIGINS = new Set(['http://localhost:4546', 'http://localhost:8081', 'http://localhost:19006'])
+app.use('/api/*', async (c, next) => {
+  const origin = c.req.header('origin')
+  if (c.env.ENVIRONMENT === 'development' && origin && DEV_ORIGINS.has(origin)) {
+    return cors({
+      origin,
+      allowHeaders: ['Content-Type', 'Authorization'],
+      allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      exposeHeaders: ['set-auth-token'],
+      credentials: true,
+    })(c, next)
+  }
+  return next()
 })
 
 app.get('/api/health', (c) => c.json({ ok: true, service: 'manyhandz', version: VERSION, ts: Date.now() }))
