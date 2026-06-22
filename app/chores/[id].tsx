@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, Pressable, ScrollView } from 'react-native'
 import { router, Stack, useLocalSearchParams } from 'expo-router'
-import { Clock, Gauge, ListChecks, Pencil, Plus, Tag, Trash2, X } from 'lucide-react-native'
+import { Clock, Gauge, ListChecks, Pencil, Plus, RefreshCw, Tag, Trash2, UserPlus, X } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
@@ -33,6 +33,11 @@ import {
 } from '@/lib/query/hooks/useChores'
 import { CHORE_ICON_KEYS, iconFor } from '@/lib/manyhandz/icons'
 import { accentHex } from '@/lib/manyhandz/accents'
+import { MemberPicker } from '@/components/ui/member-picker'
+import { useCreateAssignment } from '@/lib/query/hooks/useAssignments'
+import { useCreateRotation } from '@/lib/query/hooks/useRotations'
+import { shiftDate } from '@/lib/manyhandz/dates'
+import type { RotationFrequency } from '@/lib/manyhandz/rotation'
 import type { Chore } from '@/lib/db/schema'
 
 /**
@@ -75,6 +80,12 @@ function difficultyLabel(difficulty: number, display: 'stars' | 'text'): string 
   if (difficulty <= 2) return 'Easy'
   if (difficulty <= 3) return 'Medium'
   return 'Hard'
+}
+
+/** Today as YYYY-MM-DD in the device's local zone — the household member's own day. */
+function todayLocal(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /** Labeled icon row for read mode — the standard "field" presentation on a detail screen. */
@@ -193,6 +204,55 @@ export default function ChoreDetailScreen() {
     })
   }
 
+  // --- Assign + rotation: the "hand this chore to someone" flows (gated on assignChores) ---
+  const canAssign = can('assignChores')
+  const createAssignment = useCreateAssignment(orgId ?? '')
+  const createRotation = useCreateRotation(orgId ?? '')
+  const today = todayLocal()
+  const dueOptions = [
+    { label: 'Today', value: today },
+    { label: 'Tomorrow', value: shiftDate(today, 1) },
+    { label: 'In 3 days', value: shiftDate(today, 3) },
+    { label: 'Next week', value: shiftDate(today, 7) },
+  ]
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignMember, setAssignMember] = useState<string | null>(null)
+  const [assignDue, setAssignDue] = useState(today)
+  const [rotationOpen, setRotationOpen] = useState(false)
+  const [rotMembers, setRotMembers] = useState<string[]>([])
+  const [rotFreq, setRotFreq] = useState<RotationFrequency>('weekly')
+  const [rotType, setRotType] = useState<'round_robin' | 'fixed'>('round_robin')
+
+  const submitAssign = () => {
+    if (!chore || !assignMember) return
+    createAssignment.mutate(
+      { choreId: chore.id, assignedToMemberId: assignMember, dueDate: assignDue },
+      {
+        onSuccess: () => {
+          setAssignOpen(false)
+          setAssignMember(null)
+          toast({ title: 'Chore assigned', variant: 'success' })
+        },
+        onError: () => toast({ title: "Couldn't assign the chore", variant: 'error' }),
+      },
+    )
+  }
+
+  const submitRotation = () => {
+    if (!chore || rotMembers.length === 0) return
+    createRotation.mutate(
+      { choreId: chore.id, memberOrder: rotMembers, frequency: rotFreq, rotationType: rotType, startDate: today },
+      {
+        onSuccess: () => {
+          setRotationOpen(false)
+          setRotMembers([])
+          toast({ title: 'Rotation started — first turn assigned', variant: 'success' })
+        },
+        onError: () => toast({ title: "Couldn't set up the rotation", variant: 'error' }),
+      },
+    )
+  }
+
   const notFound = query.error instanceof ApiError && query.error.status === 404
   const notFoundState = (
     <EmptyState
@@ -235,6 +295,9 @@ export default function ChoreDetailScreen() {
                 difficulty={difficultyLabel(chore.difficulty, display)}
                 showAi={showAi}
                 canEdit={canEdit}
+                canAssign={canAssign}
+                onAssign={() => setAssignOpen(true)}
+                onRotate={() => setRotationOpen(true)}
                 onEdit={startEditing}
                 onDelete={() => setConfirmingDelete(true)}
               />
@@ -335,6 +398,68 @@ export default function ChoreDetailScreen() {
           />
         </View>
       </Dialog>
+
+      {/* Assign — pick a member + due date. The chassis MemberPicker sources the household roster. */}
+      <Dialog
+        visible={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        title="Assign this chore"
+        description="Choose who's doing it and when it's due."
+      >
+        <View className="gap-4 pt-1">
+          <MemberPicker orgId={orgId ?? ''} label="Assign to" value={assignMember} onChange={setAssignMember} />
+          <Select label="Due" options={dueOptions} value={assignDue} onValueChange={setAssignDue} />
+          <View className="flex-row justify-end gap-3">
+            <Button variant="outline" label="Cancel" onPress={() => setAssignOpen(false)} />
+            <Button label="Assign" loading={createAssignment.isPending} disabled={!assignMember} onPress={submitAssign} />
+          </View>
+        </View>
+      </Dialog>
+
+      {/* Set up rotation — order the members + a cadence; the engine skips whoever's away. */}
+      <Dialog
+        visible={rotationOpen}
+        onClose={() => setRotationOpen(false)}
+        title="Set up a rotation"
+        description="It rotates automatically each period and skips anyone who's away."
+      >
+        <View className="gap-4 pt-1">
+          <MemberPicker
+            orgId={orgId ?? ''}
+            label="Members (in turn order)"
+            placeholder="Pick who's in the rotation"
+            multiple
+            values={rotMembers}
+            onValuesChange={setRotMembers}
+          />
+          <Select
+            label="How often"
+            options={[
+              { label: 'Daily', value: 'daily' },
+              { label: 'Weekly', value: 'weekly' },
+              { label: 'Every 2 weeks', value: 'biweekly' },
+              { label: 'Monthly', value: 'monthly' },
+            ]}
+            value={rotFreq}
+            onValueChange={(v) => setRotFreq(v as RotationFrequency)}
+          />
+          <View className="gap-1.5">
+            <Text variant="label">Style</Text>
+            <SegmentedControl
+              value={rotType}
+              onValueChange={(v) => setRotType(v as 'round_robin' | 'fixed')}
+              options={[
+                { label: 'Take turns', value: 'round_robin' },
+                { label: 'Always same', value: 'fixed' },
+              ]}
+            />
+          </View>
+          <View className="flex-row justify-end gap-3">
+            <Button variant="outline" label="Cancel" onPress={() => setRotationOpen(false)} />
+            <Button label="Start rotation" loading={createRotation.isPending} disabled={rotMembers.length === 0} onPress={submitRotation} />
+          </View>
+        </View>
+      </Dialog>
     </>
   )
 }
@@ -347,6 +472,9 @@ function ReadMode({
   difficulty,
   showAi,
   canEdit,
+  canAssign,
+  onAssign,
+  onRotate,
   onEdit,
   onDelete,
 }: {
@@ -356,6 +484,9 @@ function ReadMode({
   difficulty: string
   showAi: boolean
   canEdit: boolean
+  canAssign: boolean
+  onAssign: () => void
+  onRotate: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -388,6 +519,21 @@ function ReadMode({
       </Card>
 
       <ChecklistView steps={chore.checklist ?? []} />
+
+      {canAssign ? (
+        <Card>
+          <CardContent className="gap-3">
+            <View>
+              <Text variant="label">Put it to work</Text>
+              <Text variant="caption">Hand this chore to someone, or set it to rotate automatically.</Text>
+            </View>
+            <View className="flex-row flex-wrap gap-3">
+              <Button variant="outline" icon={UserPlus} label="Assign" onPress={onAssign} />
+              <Button variant="outline" icon={RefreshCw} label="Set up rotation" onPress={onRotate} />
+            </View>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {canEdit ? (
         <View className="flex-row flex-wrap gap-3">

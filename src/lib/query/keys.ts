@@ -41,6 +41,7 @@ export const queryKeys = {
     choreCategories: (orgId: string) => ['organizations', orgId, 'chore-categories'] as const,
     assignments: (orgId: string) => ['organizations', orgId, 'assignments'] as const,
     assignmentDetail: (orgId: string, id: string) => ['organizations', orgId, 'assignments', id] as const,
+    rotations: (orgId: string) => ['organizations', orgId, 'rotations'] as const,
     completions: (orgId: string, status: string) => ['organizations', orgId, 'completions', status] as const,
     // --- Breadth resources (built by the feature fleet; registered here so hooks share the registry) ---
     rewards: (orgId: string) => ['organizations', orgId, 'rewards'] as const,

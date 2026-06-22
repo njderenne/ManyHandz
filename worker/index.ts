@@ -28,6 +28,7 @@ import { usersRoutes } from './routes/users'
 import { choreRoutes } from './routes/chores'
 import { householdRoutes } from './routes/household'
 import { assignmentRoutes } from './routes/assignments'
+import { rotationRoutes } from './routes/rotations'
 import { completionRoutes } from './routes/completions'
 import { onboardingRoutes } from './routes/onboarding'
 import { rewardRoutes } from './routes/rewards'
@@ -222,6 +223,7 @@ app.route('/api/organizations', messageRoutes)
 app.route('/api/organizations', householdRoutes)
 app.route('/api/organizations', choreRoutes)
 app.route('/api/organizations', assignmentRoutes)
+app.route('/api/organizations', rotationRoutes)
 app.route('/api/organizations', completionRoutes)
 app.route('/api/households', onboardingRoutes)
 // Breadth resources (built by the feature fleet; all org-scoped under /api/organizations).
