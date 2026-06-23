@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -239,7 +240,7 @@ function CreatePollDialog({ orgId, visible, onClose }: { orgId: string; visible:
 
   return (
     <Dialog visible={visible} onClose={close} title="New poll" className="max-w-md">
-      <View className="gap-4">
+      <Form onSubmit={submit} className="gap-4">
         <Input label="Question" placeholder="Pizza or tacos this Friday?" maxLength={200} value={question} onChangeText={setQuestion} />
 
         <View className="gap-2">
@@ -294,7 +295,7 @@ function CreatePollDialog({ orgId, visible, onClose }: { orgId: string; visible:
         />
 
         <Button label="Post poll" loading={create.isPending} onPress={submit} />
-      </View>
+      </Form>
     </Dialog>
   )
 }
@@ -390,7 +391,7 @@ function CreateAnnouncementDialog({ orgId, visible, onClose }: { orgId: string; 
 
   return (
     <Dialog visible={visible} onClose={close} title="New announcement" className="max-w-md">
-      <View className="gap-4">
+      <Form onSubmit={submit} className="gap-4">
         <Input label="Title" placeholder="Trash goes out tonight" value={title} onChangeText={setTitle} />
         <Textarea label="Details" placeholder="Anything the household should know (optional)" rows={3} value={body} onChangeText={setBody} />
         <Select label="Priority" options={PRIORITY_OPTIONS} value={priority} onValueChange={(v) => setPriority(v as AnnouncementPriority)} />
@@ -403,7 +404,7 @@ function CreateAnnouncementDialog({ orgId, visible, onClose }: { orgId: string; 
           placeholder="Stays pinned until removed"
         />
         <Button label="Post notice" loading={create.isPending} onPress={submit} />
-      </View>
+      </Form>
     </Dialog>
   )
 }

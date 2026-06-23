@@ -1,9 +1,10 @@
 import { forwardRef, useState } from 'react'
-import { TextInput, View, type TextInputProps } from 'react-native'
+import { Platform, TextInput, View, type TextInputProps } from 'react-native'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { useColors } from '@/lib/config/theme'
 import { Text } from './text'
+import { useFormSubmit } from './form'
 
 /**
  * Input — the canonical single-line text field.
@@ -39,12 +40,19 @@ export type InputProps = TextInputProps &
   }
 
 export const Input = forwardRef<TextInput, InputProps>(function Input(
-  { className, containerClassName, label, error, helper, state, size, onFocus, onBlur, ...props },
+  { className, containerClassName, label, error, helper, state, size, onFocus, onBlur, onSubmitEditing, ...props },
   ref,
 ) {
   const colors = useColors()
+  const formSubmit = useFormSubmit()
   const [focused, setFocused] = useState(false)
   const hasError = !!error || state === 'error'
+  // Web Enter-to-submit: an explicit onSubmitEditing wins; otherwise fall back to the enclosing
+  // <Form>'s onSubmit. Web-only — native keeps its per-field return-key behavior unchanged (so a
+  // multi-field form never submits half-filled on the first "return"). RN-Web fires onSubmitEditing
+  // on Enter for single-line inputs, which is exactly this field (multiline lives in <Textarea>).
+  const handleSubmitEditing =
+    onSubmitEditing ?? (Platform.OS === 'web' && formSubmit ? () => formSubmit() : undefined)
   return (
     <View className={cn('gap-1.5', containerClassName)}>
       {label ? <Text variant="label">{label}</Text> : null}
@@ -52,6 +60,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         ref={ref}
         accessibilityLabel={label}
         placeholderTextColor={colors.placeholder}
+        onSubmitEditing={handleSubmitEditing}
         onFocus={(e) => {
           setFocused(true)
           onFocus?.(e)

@@ -6,6 +6,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -187,20 +188,22 @@ function SignedIn() {
       <Section title={`New ${TENANT}`}>
         <Card>
           <CardContent className="gap-3">
-            <Input
-              label="Name"
-              placeholder="Acme Inc"
-              value={createName}
-              onChangeText={setCreateName}
-              autoCapitalize="words"
-              helper={createName.trim() ? `Slug: ${slugify(createName)}` : undefined}
-            />
-            <Button
-              label={`Create ${TENANT}`}
-              loading={creating}
-              disabled={!slugify(createName)}
-              onPress={createOrg}
-            />
+            <Form onSubmit={createOrg} className="gap-3">
+              <Input
+                label="Name"
+                placeholder="Acme Inc"
+                value={createName}
+                onChangeText={setCreateName}
+                autoCapitalize="words"
+                helper={createName.trim() ? `Slug: ${slugify(createName)}` : undefined}
+              />
+              <Button
+                label={`Create ${TENANT}`}
+                loading={creating}
+                disabled={!slugify(createName)}
+                onPress={createOrg}
+              />
+            </Form>
           </CardContent>
         </Card>
       </Section>
@@ -244,27 +247,29 @@ function SignedIn() {
           <Section title="Invite member" description="They'll receive an email invitation.">
             <Card>
               <CardContent className="gap-3">
-                <Input
-                  label="Email"
-                  placeholder="teammate@example.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={inviteEmail}
-                  onChangeText={setInviteEmail}
-                />
-                <View className="gap-1.5">
-                  <Text variant="label">Role</Text>
-                  <SegmentedControl
-                    value={inviteRole}
-                    onValueChange={(v) => setInviteRole(v as 'member' | 'admin')}
-                    options={[
-                      { label: 'Member', value: 'member' },
-                      { label: 'Admin', value: 'admin' },
-                    ]}
+                <Form onSubmit={invite} className="gap-3">
+                  <Input
+                    label="Email"
+                    placeholder="teammate@example.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={inviteEmail}
+                    onChangeText={setInviteEmail}
                   />
-                </View>
-                <Button label="Send invite" loading={inviting} onPress={invite} />
+                  <View className="gap-1.5">
+                    <Text variant="label">Role</Text>
+                    <SegmentedControl
+                      value={inviteRole}
+                      onValueChange={(v) => setInviteRole(v as 'member' | 'admin')}
+                      options={[
+                        { label: 'Member', value: 'member' },
+                        { label: 'Admin', value: 'admin' },
+                      ]}
+                    />
+                  </View>
+                  <Button label="Send invite" loading={inviting} onPress={invite} />
+                </Form>
               </CardContent>
             </Card>
           </Section>

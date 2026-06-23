@@ -7,6 +7,7 @@ import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -151,129 +152,131 @@ export default function NewGoalScreen() {
     <>
       <Stack.Screen options={{ headerShown: true, title: 'New goal' }} />
       <PageWrapper width="form" className="gap-5 pb-16">
-        <Card>
-          <CardContent className="gap-4">
-            <Input
-              label="Title"
-              placeholder="New bike, Disney trip…"
-              value={title}
-              onChangeText={(text) => {
-                setTitle(text)
-                if (titleError) setTitleError(undefined)
-              }}
-              error={titleError}
-              maxLength={120}
-              autoFocus
-            />
-            <Textarea
-              label="Description"
-              placeholder="What's this goal about? (optional)"
-              rows={3}
-              value={description}
-              onChangeText={setDescription}
-              maxLength={1000}
-            />
-
-            <View className="gap-2">
-              <Text variant="label">Icon</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {GOAL_ICON_KEYS.map((key) => {
-                  const Icon = iconFor(key)
-                  const selected = icon === key
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setIcon(key)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Icon ${key}`}
-                      className={cn(
-                        'size-12 items-center justify-center rounded-xl border active:opacity-80',
-                        selected ? 'border-primary bg-accent' : 'border-border bg-card',
-                      )}
-                    >
-                      <Icon color={selected ? colors.brand : colors.mutedForeground} size={22} />
-                    </Pressable>
-                  )
-                })}
-              </View>
-            </View>
-
-            <Input
-              label="Target points"
-              placeholder="500"
-              keyboardType="number-pad"
-              value={targetPoints}
-              onChangeText={(text) => {
-                setTargetPoints(text.replace(/[^0-9]/g, ''))
-                if (pointsError) setPointsError(undefined)
-              }}
-              error={pointsError}
-              maxLength={7}
-            />
-            <Input
-              label="Monetary value (optional)"
-              placeholder="25.00"
-              keyboardType="decimal-pad"
-              value={monetary}
-              onChangeText={setMonetary}
-              helper="What it's worth in dollars, if it's a cash-out or purchase goal."
-              maxLength={12}
-            />
-
-            {/* Parents can target any member; kids only ever create for themselves. */}
-            {canTargetAnyone ? (
-              <Select
-                label="Assign to"
-                value={assignedTo}
-                onValueChange={setAssignedTo}
-                placeholder="Choose a member"
-                options={memberOptions}
+        <Form onSubmit={submit} className="gap-5">
+          <Card>
+            <CardContent className="gap-4">
+              <Input
+                label="Title"
+                placeholder="New bike, Disney trip…"
+                value={title}
+                onChangeText={(text) => {
+                  setTitle(text)
+                  if (titleError) setTitleError(undefined)
+                }}
+                error={titleError}
+                maxLength={120}
+                autoFocus
               />
-            ) : (
-              <View className="flex-row items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5">
-                <Lock color={colors.mutedForeground} size={16} />
-                <Text variant="caption" className="flex-1">
-                  This goal is for you — a parent will approve it before it goes live.
-                </Text>
+              <Textarea
+                label="Description"
+                placeholder="What's this goal about? (optional)"
+                rows={3}
+                value={description}
+                onChangeText={setDescription}
+                maxLength={1000}
+              />
+
+              <View className="gap-2">
+                <Text variant="label">Icon</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {GOAL_ICON_KEYS.map((key) => {
+                    const Icon = iconFor(key)
+                    const selected = icon === key
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => setIcon(key)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Icon ${key}`}
+                        className={cn(
+                          'size-12 items-center justify-center rounded-xl border active:opacity-80',
+                          selected ? 'border-primary bg-accent' : 'border-border bg-card',
+                        )}
+                      >
+                        <Icon color={selected ? colors.brand : colors.mutedForeground} size={22} />
+                      </Pressable>
+                    )
+                  })}
+                </View>
               </View>
-            )}
-          </CardContent>
-        </Card>
 
-        <View className="gap-2">
-          <Text variant="label">Suggestions</Text>
-          <Text variant="caption">Tap one to prefill the form, then tweak.</Text>
+              <Input
+                label="Target points"
+                placeholder="500"
+                keyboardType="number-pad"
+                value={targetPoints}
+                onChangeText={(text) => {
+                  setTargetPoints(text.replace(/[^0-9]/g, ''))
+                  if (pointsError) setPointsError(undefined)
+                }}
+                error={pointsError}
+                maxLength={7}
+              />
+              <Input
+                label="Monetary value (optional)"
+                placeholder="25.00"
+                keyboardType="decimal-pad"
+                value={monetary}
+                onChangeText={setMonetary}
+                helper="What it's worth in dollars, if it's a cash-out or purchase goal."
+                maxLength={12}
+              />
+
+              {/* Parents can target any member; kids only ever create for themselves. */}
+              {canTargetAnyone ? (
+                <Select
+                  label="Assign to"
+                  value={assignedTo}
+                  onValueChange={setAssignedTo}
+                  placeholder="Choose a member"
+                  options={memberOptions}
+                />
+              ) : (
+                <View className="flex-row items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5">
+                  <Lock color={colors.mutedForeground} size={16} />
+                  <Text variant="caption" className="flex-1">
+                    This goal is for you — a parent will approve it before it goes live.
+                  </Text>
+                </View>
+              )}
+            </CardContent>
+          </Card>
+
           <View className="gap-2">
-            {SUGGESTIONS.map((s) => {
-              const Icon = iconFor(s.icon)
-              return (
-                <Pressable key={s.title} onPress={() => applySuggestion(s)} className="active:opacity-80">
-                  <Card>
-                    <CardContent className="flex-row items-center gap-3 py-3">
-                      <View className="size-9 items-center justify-center rounded-lg bg-accent">
-                        <Icon color={colors.brand} size={18} />
-                      </View>
-                      <View className="flex-1">
-                        <Text variant="label">{s.title}</Text>
-                        <Text variant="caption">
-                          {s.targetPoints} pts{s.monetaryValueCents != null ? ` · $${(s.monetaryValueCents / 100).toFixed(0)}` : ''}
-                        </Text>
-                      </View>
-                      {title === s.title ? <Check color={colors.brand} size={18} /> : <Sparkles color={colors.mutedForeground} size={16} />}
-                    </CardContent>
-                  </Card>
-                </Pressable>
-              )
-            })}
+            <Text variant="label">Suggestions</Text>
+            <Text variant="caption">Tap one to prefill the form, then tweak.</Text>
+            <View className="gap-2">
+              {SUGGESTIONS.map((s) => {
+                const Icon = iconFor(s.icon)
+                return (
+                  <Pressable key={s.title} onPress={() => applySuggestion(s)} className="active:opacity-80">
+                    <Card>
+                      <CardContent className="flex-row items-center gap-3 py-3">
+                        <View className="size-9 items-center justify-center rounded-lg bg-accent">
+                          <Icon color={colors.brand} size={18} />
+                        </View>
+                        <View className="flex-1">
+                          <Text variant="label">{s.title}</Text>
+                          <Text variant="caption">
+                            {s.targetPoints} pts{s.monetaryValueCents != null ? ` · $${(s.monetaryValueCents / 100).toFixed(0)}` : ''}
+                          </Text>
+                        </View>
+                        {title === s.title ? <Check color={colors.brand} size={18} /> : <Sparkles color={colors.mutedForeground} size={16} />}
+                      </CardContent>
+                    </Card>
+                  </Pressable>
+                )
+              })}
+            </View>
           </View>
-        </View>
 
-        <Button label="Create goal" loading={createGoal.isPending} onPress={submit} />
-        <Button
-          variant="outline"
-          label="Cancel"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/goals'))}
-        />
+          <Button label="Create goal" loading={createGoal.isPending} onPress={submit} />
+          <Button
+            variant="outline"
+            label="Cancel"
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/goals'))}
+          />
+        </Form>
       </PageWrapper>
     </>
   )

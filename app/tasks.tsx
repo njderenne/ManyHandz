@@ -6,6 +6,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Select } from '@/components/ui/select'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Card, CardContent } from '@/components/ui/card'
@@ -252,28 +253,30 @@ function QuickAdd({
   return (
     <Card>
       <CardContent className="gap-3">
-        <Input
-          placeholder="Add a quick task…"
-          value={title}
-          onChangeText={onTitleChange}
-          autoCapitalize="sentences"
-          returnKeyType="done"
-          onSubmitEditing={onAdd}
-        />
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Select
-              value={assignee}
-              onValueChange={onAssigneeChange}
-              placeholder="Assign to"
-              options={memberOptions}
-            />
+        <Form onSubmit={onAdd} className="gap-3">
+          <Input
+            placeholder="Add a quick task…"
+            value={title}
+            onChangeText={onTitleChange}
+            autoCapitalize="sentences"
+            returnKeyType="done"
+            onSubmitEditing={onAdd}
+          />
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <Select
+                value={assignee}
+                onValueChange={onAssigneeChange}
+                placeholder="Assign to"
+                options={memberOptions}
+              />
+            </View>
+            <View className="flex-1">
+              <DateTimePicker mode="date" value={due} onValueChange={onDueChange} placeholder="Due date" />
+            </View>
           </View>
-          <View className="flex-1">
-            <DateTimePicker mode="date" value={due} onValueChange={onDueChange} placeholder="Due date" />
-          </View>
-        </View>
-        <Button label="Add task" icon={Plus} loading={adding} disabled={!title.trim()} onPress={onAdd} />
+          <Button label="Add task" icon={Plus} loading={adding} disabled={!title.trim()} onPress={onAdd} />
+        </Form>
       </CardContent>
     </Card>
   )

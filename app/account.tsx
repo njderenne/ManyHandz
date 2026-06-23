@@ -6,6 +6,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar } from '@/components/ui/avatar'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -272,14 +273,16 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
       <Section title="Profile">
         <Card>
           <CardContent className="gap-3">
-            <Input
-              label={t('account.displayNameLabel')}
-              placeholder="Your name"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
-            <Button label="Save name" loading={savingName} onPress={saveName} />
+            <Form onSubmit={saveName} className="gap-3">
+              <Input
+                label={t('account.displayNameLabel')}
+                placeholder="Your name"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+              <Button label="Save name" loading={savingName} onPress={saveName} />
+            </Form>
           </CardContent>
         </Card>
       </Section>
@@ -287,22 +290,24 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
       <Section title="Email">
         <Card>
           <CardContent className="gap-3">
-            <Input
-              label="New email"
-              placeholder="you@example.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              helper={`Currently ${user.email}. Depending on configuration, you may need to verify the change by email.`}
-              value={newEmail}
-              onChangeText={setNewEmail}
-            />
-            <Button
-              variant="secondary"
-              label="Change email"
-              loading={changingEmail}
-              onPress={changeEmail}
-            />
+            <Form onSubmit={changeEmail} className="gap-3">
+              <Input
+                label="New email"
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                helper={`Currently ${user.email}. Depending on configuration, you may need to verify the change by email.`}
+                value={newEmail}
+                onChangeText={setNewEmail}
+              />
+              <Button
+                variant="secondary"
+                label="Change email"
+                loading={changingEmail}
+                onPress={changeEmail}
+              />
+            </Form>
           </CardContent>
         </Card>
       </Section>
@@ -310,27 +315,29 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
       <Section title="Password">
         <Card>
           <CardContent className="gap-3">
-            <Input
-              label={t('account.currentPasswordLabel')}
-              placeholder="••••••••"
-              secureTextEntry
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-            />
-            <Input
-              label={t('auth.newPasswordLabel')}
-              placeholder="••••••••"
-              secureTextEntry
-              helper="At least 8 characters"
-              value={newPassword}
-              onChangeText={setNewPassword}
-            />
-            <Button
-              variant="secondary"
-              label="Change password"
-              loading={changingPassword}
-              onPress={changePassword}
-            />
+            <Form onSubmit={changePassword} className="gap-3">
+              <Input
+                label={t('account.currentPasswordLabel')}
+                placeholder="••••••••"
+                secureTextEntry
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+              />
+              <Input
+                label={t('auth.newPasswordLabel')}
+                placeholder="••••••••"
+                secureTextEntry
+                helper="At least 8 characters"
+                value={newPassword}
+                onChangeText={setNewPassword}
+              />
+              <Button
+                variant="secondary"
+                label="Change password"
+                loading={changingPassword}
+                onPress={changePassword}
+              />
+            </Form>
           </CardContent>
         </Card>
       </Section>
@@ -364,20 +371,22 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
             <Text variant="muted">
               Permanently delete your account and everything in it. This cannot be undone.
             </Text>
-            <Input
-              label="Confirm with your password"
-              placeholder="••••••••"
-              secureTextEntry
-              helper="Optional if you signed in recently or use a social account."
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-            />
-            <Button
-              variant="destructive"
-              label="Delete account"
-              loading={deleting}
-              onPress={deleteAccount}
-            />
+            <Form onSubmit={deleteAccount} className="gap-3">
+              <Input
+                label="Confirm with your password"
+                placeholder="••••••••"
+                secureTextEntry
+                helper="Optional if you signed in recently or use a social account."
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+              />
+              <Button
+                variant="destructive"
+                label="Delete account"
+                loading={deleting}
+                onPress={deleteAccount}
+              />
+            </Form>
           </CardContent>
         </Card>
       </Section>

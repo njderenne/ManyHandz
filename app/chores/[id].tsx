@@ -8,6 +8,7 @@ import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Select } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Rating } from '@/components/ui/rating'
@@ -302,7 +303,7 @@ export default function ChoreDetailScreen() {
                 onDelete={() => setConfirmingDelete(true)}
               />
             ) : chore && draft ? (
-              <>
+              <Form onSubmit={save} className="gap-5">
                 <Card>
                   <CardContent className="gap-5">
                     <Input
@@ -376,7 +377,7 @@ export default function ChoreDetailScreen() {
 
                 <Button label="Save" loading={updateChore.isPending} onPress={save} />
                 <Button variant="outline" label="Cancel" onPress={() => setEditing(false)} />
-              </>
+              </Form>
             ) : null}
           </AsyncBoundary>
         )}
@@ -685,6 +686,9 @@ function ChecklistEditor({
                     value={step.label}
                     onChangeText={(text) => patch(index, { label: text })}
                     maxLength={120}
+                    // Enter adds another step rather than submitting the whole chore (an explicit
+                    // onSubmitEditing wins over the enclosing <Form>'s web Enter-to-submit).
+                    onSubmitEditing={add}
                   />
                   <Pressable
                     onPress={() => remove(index)}

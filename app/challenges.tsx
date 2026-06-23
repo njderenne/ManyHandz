@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -234,7 +235,7 @@ function CreateChallengeDialog({
 
   return (
     <Dialog visible={visible} onClose={close} title="New challenge" className="max-w-md">
-      <View className="gap-4">
+      <Form onSubmit={submit} className="gap-4">
         <Input label="Title" placeholder="Weekend Sprint" value={title} onChangeText={setTitle} />
         <Textarea
           label="Description"
@@ -285,7 +286,7 @@ function CreateChallengeDialog({
         )}
 
         <Button label="Start challenge" loading={create.isPending} onPress={submit} />
-      </View>
+      </Form>
     </Dialog>
   )
 }

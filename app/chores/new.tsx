@@ -7,6 +7,7 @@ import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Select } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Rating } from '@/components/ui/rating'
@@ -113,7 +114,7 @@ export default function NewChoreScreen() {
             }
           />
         ) : (
-          <>
+          <Form onSubmit={submit} className="gap-5">
             <Card>
               <CardContent className="gap-5">
                 <Input
@@ -187,7 +188,7 @@ export default function NewChoreScreen() {
               label="Cancel"
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/chores'))}
             />
-          </>
+          </Form>
         )}
       </PageWrapper>
     </>
@@ -304,6 +305,9 @@ function ChecklistEditor({
                     value={step.label}
                     onChangeText={(text) => patch(index, { label: text })}
                     maxLength={120}
+                    // Enter adds another step rather than submitting the whole chore (an explicit
+                    // onSubmitEditing wins over the enclosing <Form>'s web Enter-to-submit).
+                    onSubmitEditing={add}
                   />
                   <Pressable
                     onPress={() => remove(index)}

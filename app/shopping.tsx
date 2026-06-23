@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs } from '@/components/ui/tabs'
 import { Spinner } from '@/components/ui/spinner'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Form } from '@/components/ui/form'
 import { Dialog } from '@/components/ui/dialog'
 import { ActionSheet } from '@/components/ui/action-sheet'
 import { ListItem } from '@/components/ui/list'
@@ -213,7 +214,7 @@ function ShoppingBoard({ orgId }: { orgId: string }) {
         title="New list"
         description="Everyone in your household can see and edit it."
       >
-        <View className="mt-1 gap-3">
+        <Form onSubmit={onCreateList} className="mt-1 gap-3">
           <Input
             placeholder="Groceries, Costco, Hardware…"
             value={newListName}
@@ -226,7 +227,7 @@ function ShoppingBoard({ orgId }: { orgId: string }) {
             <Button variant="ghost" label="Cancel" onPress={() => setNewListOpen(false)} />
             <Button label="Create" loading={createList.isPending} onPress={onCreateList} />
           </View>
-        </View>
+        </Form>
       </Dialog>
 
       <ActionSheet visible={manageOpen} onClose={() => setManageOpen(false)} title={selected?.name ?? 'List'}>
@@ -292,7 +293,7 @@ function ListPane({ orgId, list }: { orgId: string; list: ShoppingList }) {
 
   return (
     <View className="gap-4">
-      <View className="flex-row items-end gap-2">
+      <Form onSubmit={onAdd} className="flex-row items-end gap-2">
         <Input
           containerClassName="flex-1"
           placeholder="Add an item…"
@@ -303,7 +304,7 @@ function ListPane({ orgId, list }: { orgId: string; list: ShoppingList }) {
           autoCapitalize="sentences"
         />
         <Button label="Add" disabled={!draft.trim() || addItem.isPending} onPress={onAdd} />
-      </View>
+      </Form>
 
       {isEmpty ? (
         <EmptyState

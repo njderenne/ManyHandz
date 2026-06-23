@@ -13,6 +13,7 @@ import { Stepper } from '@/components/ui/stepper'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Dialog } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
@@ -259,54 +260,56 @@ function CreateDialog({
 
   return (
     <Dialog visible={visible} onClose={onClose} title="New challenge" className="max-w-md gap-4">
-      <Select
-        label="Opponent"
-        placeholder="Choose who to challenge"
-        options={opponentOptions}
-        value={opponentId}
-        onValueChange={setOpponentId}
-        searchable={opponentOptions.length > 8}
-      />
-
-      <View className="gap-1.5">
-        <Text variant="label">Type</Text>
-        <Select options={TYPE_OPTIONS} value={type} onValueChange={(v) => setType(v as CompetitionType)} />
-      </View>
-
-      {needsTarget ? (
-        <Input
-          label="Target"
-          placeholder="e.g. 20"
-          keyboardType="number-pad"
-          value={target}
-          onChangeText={setTarget}
+      <Form onSubmit={submit} className="gap-4">
+        <Select
+          label="Opponent"
+          placeholder="Choose who to challenge"
+          options={opponentOptions}
+          value={opponentId}
+          onValueChange={setOpponentId}
+          searchable={opponentOptions.length > 8}
         />
-      ) : null}
 
-      <View className="gap-1.5">
-        <Text variant="label">Duration</Text>
-        <SegmentedControl options={DURATION_OPTIONS} value={duration} onValueChange={setDuration} />
-      </View>
-
-      <View className="gap-1.5">
-        <Text variant="label">Point stakes</Text>
-        <View className="flex-row items-center justify-between gap-3">
-          <Stepper value={stakes} onValueChange={setStakes} min={0} max={effectiveMax} step={5} />
-          <Text variant="caption" className="flex-1">
-            {effectiveMax === 0 ? 'No stakes available' : `Up to ${effectiveMax} pts wagered`}
-          </Text>
+        <View className="gap-1.5">
+          <Text variant="label">Type</Text>
+          <Select options={TYPE_OPTIONS} value={type} onValueChange={(v) => setType(v as CompetitionType)} />
         </View>
-      </View>
 
-      <Textarea
-        label="Real-world prize (optional)"
-        placeholder="Loser does the dishes for a week"
-        rows={2}
-        value={note}
-        onChangeText={setNote}
-      />
+        {needsTarget ? (
+          <Input
+            label="Target"
+            placeholder="e.g. 20"
+            keyboardType="number-pad"
+            value={target}
+            onChangeText={setTarget}
+          />
+        ) : null}
 
-      <Button label="Send challenge" loading={create.isPending} onPress={submit} />
+        <View className="gap-1.5">
+          <Text variant="label">Duration</Text>
+          <SegmentedControl options={DURATION_OPTIONS} value={duration} onValueChange={setDuration} />
+        </View>
+
+        <View className="gap-1.5">
+          <Text variant="label">Point stakes</Text>
+          <View className="flex-row items-center justify-between gap-3">
+            <Stepper value={stakes} onValueChange={setStakes} min={0} max={effectiveMax} step={5} />
+            <Text variant="caption" className="flex-1">
+              {effectiveMax === 0 ? 'No stakes available' : `Up to ${effectiveMax} pts wagered`}
+            </Text>
+          </View>
+        </View>
+
+        <Textarea
+          label="Real-world prize (optional)"
+          placeholder="Loser does the dishes for a week"
+          rows={2}
+          value={note}
+          onChangeText={setNote}
+        />
+
+        <Button label="Send challenge" loading={create.isPending} onPress={submit} />
+      </Form>
     </Dialog>
   )
 }

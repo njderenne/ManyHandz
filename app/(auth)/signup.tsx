@@ -8,6 +8,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Alert } from '@/components/ui/alert'
 import { authClient } from '@/lib/auth/client'
 import { APP_CONFIG } from '@/lib/config/app'
@@ -68,52 +69,54 @@ export default function Signup() {
         <Alert variant="error" title={t('auth.signUpErrorTitle')} description={error} />
       ) : null}
 
-      <Controller
-        control={control}
-        name="name"
-        render={({ field }) => (
-          <Input
-            label={t('auth.nameLabel')}
-            placeholder={t('auth.namePlaceholder')}
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={formState.errors.name?.message}
-          />
-        )}
-      />
-      <Controller
-        control={control}
-        name="email"
-        render={({ field }) => (
-          <Input
-            label={t('auth.emailLabel')}
-            placeholder={t('auth.emailPlaceholder')}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={formState.errors.email?.message}
-          />
-        )}
-      />
-      <Controller
-        control={control}
-        name="password"
-        render={({ field }) => (
-          <Input
-            label={t('auth.passwordLabel')}
-            placeholder={t('auth.passwordPlaceholder')}
-            secureTextEntry
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={formState.errors.password?.message}
-          />
-        )}
-      />
-      <Button label={t('auth.createAccount')} loading={loading} onPress={onSubmit} />
+      <Form onSubmit={onSubmit} className="gap-5">
+        <Controller
+          control={control}
+          name="name"
+          render={({ field }) => (
+            <Input
+              label={t('auth.nameLabel')}
+              placeholder={t('auth.namePlaceholder')}
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={formState.errors.name?.message}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="email"
+          render={({ field }) => (
+            <Input
+              label={t('auth.emailLabel')}
+              placeholder={t('auth.emailPlaceholder')}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={formState.errors.email?.message}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="password"
+          render={({ field }) => (
+            <Input
+              label={t('auth.passwordLabel')}
+              placeholder={t('auth.passwordPlaceholder')}
+              secureTextEntry
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={formState.errors.password?.message}
+            />
+          )}
+        />
+        <Button label={t('auth.createAccount')} loading={loading} onPress={onSubmit} />
+      </Form>
 
       {/* Keep the referral code alive if the user hops to sign-in instead. */}
       <Link

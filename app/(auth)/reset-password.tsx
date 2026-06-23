@@ -8,6 +8,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Alert } from '@/components/ui/alert'
 import { authClient } from '@/lib/auth/client'
 import { t } from '@/lib/i18n'
@@ -57,22 +58,24 @@ export default function ResetPassword() {
         <Alert variant="error" title={t('auth.resetErrorTitle')} description={error} />
       ) : null}
 
-      <Controller
-        control={control}
-        name="password"
-        render={({ field }) => (
-          <Input
-            label={t('auth.newPasswordLabel')}
-            placeholder={t('auth.passwordPlaceholder')}
-            secureTextEntry
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={formState.errors.password?.message}
-          />
-        )}
-      />
-      <Button label={t('auth.resetPassword')} loading={loading} onPress={onSubmit} />
+      <Form onSubmit={onSubmit} className="gap-5">
+        <Controller
+          control={control}
+          name="password"
+          render={({ field }) => (
+            <Input
+              label={t('auth.newPasswordLabel')}
+              placeholder={t('auth.passwordPlaceholder')}
+              secureTextEntry
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={formState.errors.password?.message}
+            />
+          )}
+        />
+        <Button label={t('auth.resetPassword')} loading={loading} onPress={onSubmit} />
+      </Form>
 
       <Link href="/login" className="text-center">
         <Text variant="muted">

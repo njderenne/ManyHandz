@@ -9,6 +9,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
@@ -445,7 +446,7 @@ function CreateDialog({
 
   return (
     <Dialog visible={visible} onClose={onClose} title="New settlement" description="File an IOU or a promise.">
-      <View className="gap-3">
+      <Form onSubmit={submit} className="gap-3">
         <Select label="To" placeholder="Who is owed?" value={toMemberId} onValueChange={setToMemberId} options={members} />
         <Select
           label="Type"
@@ -468,7 +469,7 @@ function CreateDialog({
           <Button variant="ghost" label="Cancel" onPress={onClose} />
           <Button label="Create" loading={pending} onPress={submit} />
         </View>
-      </View>
+      </Form>
     </Dialog>
   )
 }

@@ -8,6 +8,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Alert } from '@/components/ui/alert'
 import { authClient } from '@/lib/auth/client'
 import { t } from '@/lib/i18n'
@@ -62,23 +63,25 @@ export default function ForgotPassword() {
           {error ? (
             <Alert variant="error" title={t('errors.generic')} description={error} />
           ) : null}
-          <Controller
-            control={control}
-            name="email"
-            render={({ field }) => (
-              <Input
-                label={t('auth.emailLabel')}
-                placeholder={t('auth.emailPlaceholder')}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                error={formState.errors.email?.message}
-              />
-            )}
-          />
-          <Button label={t('auth.sendResetLink')} loading={loading} onPress={onSubmit} />
+          <Form onSubmit={onSubmit} className="gap-5">
+            <Controller
+              control={control}
+              name="email"
+              render={({ field }) => (
+                <Input
+                  label={t('auth.emailLabel')}
+                  placeholder={t('auth.emailPlaceholder')}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  onBlur={field.onBlur}
+                  error={formState.errors.email?.message}
+                />
+              )}
+            />
+            <Button label={t('auth.sendResetLink')} loading={loading} onPress={onSubmit} />
+          </Form>
         </>
       )}
 

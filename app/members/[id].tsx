@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -468,7 +469,7 @@ export default function MemberProfileScreen() {
 
       {/* Self-edit dialog */}
       <Dialog visible={editOpen} onClose={() => setEditOpen(false)} title="Edit your profile">
-        <View className="gap-3 pt-1">
+        <Form onSubmit={saveEdit} className="gap-3 pt-1">
           <Input label="Display name" value={displayName} onChangeText={setDisplayName} maxLength={60} />
           <Select label="Favorite color" value={color} onValueChange={setColor} options={ACCENT_OPTIONS} />
           <Textarea label="Bio" placeholder="Tell your household about yourself" rows={3} value={bio} onChangeText={setBio} maxLength={200} />
@@ -487,7 +488,7 @@ export default function MemberProfileScreen() {
             <Button variant="outline" label="Cancel" onPress={() => setEditOpen(false)} />
             <Button label="Save" icon={Check} loading={updateMember.isPending} onPress={saveEdit} />
           </View>
-        </View>
+        </Form>
       </Dialog>
     </>
   )

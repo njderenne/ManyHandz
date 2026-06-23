@@ -14,6 +14,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -400,7 +401,7 @@ function EntryDialog({
       })}
     >
       <ScrollView className="max-h-[26rem]" keyboardShouldPersistTaps="handled">
-        <View className="gap-3 pb-1">
+        <Form onSubmit={onSave} className="gap-3 pb-1">
           <Input
             label="Title"
             placeholder="Spaghetti Bolognese"
@@ -465,7 +466,7 @@ function EntryDialog({
             ) : (
               <Text variant="muted">Add ingredients to push into a grocery list later.</Text>
             )}
-            <View className="flex-row items-end gap-2">
+            <Form onSubmit={addIngredient} className="flex-row items-end gap-2">
               <Input
                 containerClassName="flex-1"
                 placeholder="Add an ingredient…"
@@ -482,7 +483,7 @@ function EntryDialog({
                 disabled={!draftIngredient.trim()}
                 onPress={addIngredient}
               />
-            </View>
+            </Form>
           </View>
 
           <View className="mt-1 flex-row items-center justify-between gap-2">
@@ -501,7 +502,7 @@ function EntryDialog({
               <Button label="Save" loading={pending} onPress={onSave} />
             </View>
           </View>
-        </View>
+        </Form>
       </ScrollView>
     </Dialog>
   )

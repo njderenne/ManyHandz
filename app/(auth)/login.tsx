@@ -9,6 +9,7 @@ import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Alert } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { authClient } from '@/lib/auth/client'
@@ -86,38 +87,40 @@ export default function Login() {
         <Alert variant="error" title={t('auth.signInErrorTitle')} description={error} />
       ) : null}
 
-      <Controller
-        control={control}
-        name="email"
-        render={({ field }) => (
-          <Input
-            label={t('auth.emailLabel')}
-            placeholder={t('auth.emailPlaceholder')}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={formState.errors.email?.message}
-          />
-        )}
-      />
-      <Controller
-        control={control}
-        name="password"
-        render={({ field }) => (
-          <Input
-            label={t('auth.passwordLabel')}
-            placeholder={t('auth.passwordPlaceholder')}
-            secureTextEntry
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            error={formState.errors.password?.message}
-          />
-        )}
-      />
-      <Button label={t('auth.signIn')} loading={loading} onPress={onSubmit} />
+      <Form onSubmit={onSubmit} className="gap-5">
+        <Controller
+          control={control}
+          name="email"
+          render={({ field }) => (
+            <Input
+              label={t('auth.emailLabel')}
+              placeholder={t('auth.emailPlaceholder')}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={formState.errors.email?.message}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="password"
+          render={({ field }) => (
+            <Input
+              label={t('auth.passwordLabel')}
+              placeholder={t('auth.passwordPlaceholder')}
+              secureTextEntry
+              value={field.value}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              error={formState.errors.password?.message}
+            />
+          )}
+        />
+        <Button label={t('auth.signIn')} loading={loading} onPress={onSubmit} />
+      </Form>
 
       <Link href="/forgot-password" className="self-center">
         <Text variant="caption" className="text-brand-500 dark:text-brand-400">

@@ -15,6 +15,7 @@ import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 
 const MODE_ICON: Record<string, LucideIcon> = { family: Sparkles, roommate: Users }
 
@@ -90,7 +91,7 @@ export default function OnboardingScreen() {
             </View>
 
             {tab === 'create' ? (
-              <View className="gap-4">
+              <Form onSubmit={onCreate} className="gap-4">
                 <Input label="Household name" placeholder="The Smiths" value={name} onChangeText={setName} />
                 <View className="gap-3">
                   <Text variant="label">How does your household work?</Text>
@@ -117,13 +118,13 @@ export default function OnboardingScreen() {
                 </View>
                 <Button label="Create household" disabled={create.isPending} onPress={onCreate} />
                 <Text variant="caption" className="text-center">14-day free trial · no credit card</Text>
-              </View>
+              </Form>
             ) : (
-              <View className="gap-4">
+              <Form onSubmit={onJoin} className="gap-4">
                 <Input label="Invite code" placeholder="ABCD1234" autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} />
                 <Button label="Join household" disabled={join.isPending} onPress={onJoin} />
                 <Text variant="caption" className="text-center">Ask a household member for the 8-character code.</Text>
-              </View>
+              </Form>
             )}
           </View>
         </ScrollView>

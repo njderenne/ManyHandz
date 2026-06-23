@@ -7,6 +7,7 @@ import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
@@ -110,7 +111,7 @@ export default function NewEventScreen() {
             action={<Button label={t('auth.signIn')} onPress={() => router.push('/login')} />}
           />
         ) : (
-          <>
+          <Form onSubmit={submit} className="gap-5">
             <Card>
               <CardContent className="gap-4">
                 <Input
@@ -204,7 +205,7 @@ export default function NewEventScreen() {
               // Deep links have no in-app history — back() would no-op, so fall back to the list.
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/events'))}
             />
-          </>
+          </Form>
         )}
       </PageWrapper>
     </>

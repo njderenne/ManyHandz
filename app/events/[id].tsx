@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Form } from '@/components/ui/form'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
@@ -286,7 +287,7 @@ export default function EventDetailScreen() {
             ) : event && draft ? (
               /* Edit mode — the same field block as app/events/new.tsx (extraction note in the
                  header). Draft state is local; Cancel simply drops it. */
-              <>
+              <Form onSubmit={save} className="gap-5">
                 <Card>
                   <CardContent className="gap-4">
                     <Input
@@ -372,7 +373,7 @@ export default function EventDetailScreen() {
 
                 <Button label={t('common.save')} loading={updateEvent.isPending} onPress={save} />
                 <Button variant="outline" label={t('common.cancel')} onPress={() => setEditing(false)} />
-              </>
+              </Form>
             ) : null}
           </AsyncBoundary>
         )}
