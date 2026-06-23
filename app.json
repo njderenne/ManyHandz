@@ -80,9 +80,13 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "6cef9f47-3632-4b5e-a0fb-0357dbbcd3d4"
+      }
     },
     "runtimeVersion": "1.1.0",
-    "icon": "./assets/images/icon.png"
+    "icon": "./assets/images/icon.png",
+    "owner": "wlarson"
   }
 }
