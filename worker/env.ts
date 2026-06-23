@@ -44,6 +44,8 @@ export interface Env {
   REMBG_API_KEY?: string
   REPLICATE_API_TOKEN?: string
   REPLICATE_REMBG_MODEL?: string
+  /** Bearer the Criterial admin sends to GET /api/admin/config. */
+  ADMIN_METRICS_TOKEN?: string
 }
 
 /**

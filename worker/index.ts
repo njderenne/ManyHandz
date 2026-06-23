@@ -25,6 +25,7 @@ import { bookmarkRoutes } from './routes/bookmarks'
 import { eventRoutes } from './routes/events'
 import { messageRoutes } from './routes/messages'
 import { usersRoutes } from './routes/users'
+import { adminConfigRoutes } from './routes/admin-config'
 import { choreRoutes } from './routes/chores'
 import { householdRoutes } from './routes/household'
 import { assignmentRoutes } from './routes/assignments'
@@ -247,6 +248,9 @@ app.route('/api/organizations', mealRoutes)
 
 // Public user profiles — session-gated, safe fields only.
 app.route('/api/users', usersRoutes)
+
+// Config reporter for the Criterial admin (declared ENV keys + per-key hasValue).
+app.route('/api/admin/config', adminConfigRoutes)
 
 // Referrals — user-scoped create/redeem/list (codes are cross-org by design).
 app.route('/api/referrals', referralRoutes)
