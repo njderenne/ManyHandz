@@ -142,8 +142,13 @@ export function createAI(env: Env) {
       })()
     },
 
-    /** Image understanding — Grok. */
-    async vision(prompt: string, imageUrl: string, opts: AIOptions = {}): Promise<string> {
+    /**
+     * Image understanding — Grok. Accepts one image or several (e.g. a reference "done" photo plus
+     * the submitted "after" photo for a side-by-side judgement); each becomes its own image_url part
+     * in the order given, so the prompt can refer to "Image 1 / Image 2".
+     */
+    async vision(prompt: string, image: string | string[], opts: AIOptions = {}): Promise<string> {
+      const urls = Array.isArray(image) ? image : [image]
       const res = await xai().chat.completions.create({
         model: opts.model ?? models.vision,
         messages: [
@@ -151,7 +156,7 @@ export function createAI(env: Env) {
             role: 'user',
             content: [
               { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
+              ...urls.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
             ],
           },
         ],

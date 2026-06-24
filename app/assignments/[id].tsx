@@ -12,7 +12,9 @@ import {
   Play,
   Send,
   ShieldCheck,
+  Sparkles,
   Target,
+  XCircle,
 } from 'lucide-react-native'
 import { MotiView } from 'moti'
 import { cn } from '@/lib/utils'
@@ -25,6 +27,7 @@ import {
   useCompleteAssignment,
   type AssignmentWithChore,
   type CompleteInput,
+  type AiVerdict,
 } from '@/lib/query/hooks/useAssignments'
 import { useComments, useAddComment } from '@/lib/query/hooks/useComments'
 import { computePoints } from '@/lib/manyhandz/points'
@@ -185,7 +188,7 @@ function AssignmentBody(props: BodyProps) {
   const needsPhotoProof = props.requirePhotoProof || assignment.aiVerificationEnabled
 
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [success, setSuccess] = useState<{ points: number; needsApproval: boolean } | null>(null)
+  const [success, setSuccess] = useState<{ points: number; needsApproval: boolean; aiVerdict: AiVerdict | null } | null>(null)
 
   const checklistDone = assignment.checklistProgress.filter((s) => s.done).length
   const checklistTotal = assignment.checklistProgress.length
@@ -345,9 +348,9 @@ function AssignmentBody(props: BodyProps) {
         complete={props.complete}
         toast={props.toast}
         colors={colors}
-        onCompleted={(points, needsApproval) => {
+        onCompleted={(points, needsApproval, aiVerdict) => {
           setSheetOpen(false)
-          setSuccess({ points, needsApproval })
+          setSuccess({ points, needsApproval, aiVerdict })
         }}
       />
 
@@ -397,7 +400,7 @@ function CompletionSheet(props: {
   complete: ReturnType<typeof useCompleteAssignment>
   toast: ReturnType<typeof useToast>['toast']
   colors: ReturnType<typeof useColors>
-  onCompleted: (points: number, needsApproval: boolean) => void
+  onCompleted: (points: number, needsApproval: boolean, aiVerdict: AiVerdict | null) => void
 }) {
   const { assignment, features, canPhoto, needsPhotoProof, colors } = props
   const [after, setAfter] = useState<PhotoSlot>(EMPTY_SLOT)
@@ -458,8 +461,9 @@ function CompletionSheet(props: {
       { assignmentId: assignment.id, input },
       {
         onSuccess: (res) => {
-          haptics.success()
-          props.onCompleted(res.breakdown.total, res.needsApproval)
+          if (res.aiVerdict?.decision === 'auto_rejected') haptics.warning()
+          else haptics.success()
+          props.onCompleted(res.breakdown.total, res.needsApproval, res.aiVerdict)
         },
         onError: (e) => props.toast({ title: "Couldn't complete", description: (e as Error).message, variant: 'error' }),
       },
@@ -698,18 +702,35 @@ function SuccessDialog({
   animation,
   colors,
 }: {
-  result: { points: number; needsApproval: boolean } | null
+  result: { points: number; needsApproval: boolean; aiVerdict: AiVerdict | null } | null
   onClose: () => void
   animation: 'confetti' | 'checkmark'
   colors: ReturnType<typeof useColors>
 }) {
   if (!result) return null
-  const Icon = result.needsApproval ? ShieldCheck : animation === 'confetti' ? PartyPopper : CircleCheck
-  const tint = result.needsApproval ? colors.warning : colors.success
-  const title = result.needsApproval ? 'Sent for approval' : animation === 'confetti' ? 'Way to go!' : 'Chore done'
-  const body = result.needsApproval
-    ? `You will earn ${result.points} points once a parent approves.`
-    : `You earned ${result.points} points.`
+  const v = result.aiVerdict
+  const rejected = v?.decision === 'auto_rejected'
+
+  // A rejection is NOT a celebration — red, no confetti, "try again". Flagged/needs-approval is amber;
+  // a clean pass (AI or not) gets the celebratory treatment.
+  const Icon = rejected ? XCircle : result.needsApproval ? ShieldCheck : animation === 'confetti' ? PartyPopper : CircleCheck
+  const tint = rejected ? colors.destructive : result.needsApproval ? colors.warning : colors.success
+  const title = rejected
+    ? 'Not quite yet'
+    : result.needsApproval
+      ? v
+        ? 'Sent for review'
+        : 'Sent for approval'
+      : animation === 'confetti'
+        ? 'Way to go!'
+        : 'Chore done'
+  const body = rejected
+    ? 'Take another look and give it another try — see the note below.'
+    : result.needsApproval
+      ? v
+        ? `An adult will take a quick look. You'll earn ${result.points} points once it's approved.`
+        : `You will earn ${result.points} points once a parent approves.`
+      : `You earned ${result.points} points.`
 
   return (
     <Dialog visible={Boolean(result)} onClose={onClose} showClose={false}>
@@ -727,7 +748,22 @@ function SuccessDialog({
         <Text variant="muted" className="text-center">
           {body}
         </Text>
-        <Button label="Done" className="mt-1 self-stretch" onPress={onClose} />
+
+        {/* AI verdict — score + the model's one-line reasoning, so the call is never a black box. */}
+        {v ? (
+          <View className="w-full gap-1.5 rounded-xl border border-border bg-card p-3">
+            <View className="flex-row items-center gap-1.5">
+              <Sparkles color={tint} size={14} />
+              <Text variant="caption" className="font-semibold text-foreground">
+                AI photo check · {v.score}% sure
+                {v.referenceMatch != null ? ` · ${v.referenceMatch}% match to goal` : ''}
+              </Text>
+            </View>
+            <Text variant="caption">{v.reasoning}</Text>
+          </View>
+        ) : null}
+
+        <Button label={rejected ? 'Try again' : 'Done'} className="mt-1 self-stretch" onPress={onClose} />
       </View>
     </Dialog>
   )

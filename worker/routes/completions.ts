@@ -8,6 +8,8 @@ import { can } from '@/lib/config/modes'
 import { computePoints, type CompletionPhotos } from '@/lib/manyhandz/points'
 import { todayInTz, compareDate } from '@/lib/manyhandz/dates'
 import { awardCompletion } from '../manyhandz/completion-engine'
+import { createAI } from '../ai'
+import { verifyPhotos } from '../ai/verify-photos'
 
 /**
  * Completions + approval — the centerpiece. Completing an assignment runs the CANONICAL points
@@ -70,6 +72,10 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
       difficulty: schema.chore.difficulty,
       estimatedMinutes: schema.chore.estimatedMinutes,
       requiresApproval: schema.chore.requiresApproval,
+      aiVerificationEnabled: schema.chore.aiVerificationEnabled,
+      referencePhotoMediaId: schema.chore.referencePhotoMediaId,
+      choreName: schema.chore.name,
+      choreDescription: schema.chore.description,
     })
     .from(schema.assignment)
     .innerJoin(schema.chore, eq(schema.chore.id, schema.assignment.choreId))
@@ -122,10 +128,44 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
     challengeMultiplier: await activeMultiplier(c.env, ctx.orgId),
   })
 
-  // Approval gates points: only a family KID's completion (with the household + chore both requiring
-  // approval) waits — everyone else auto-approves.
-  const needsApproval =
+  // ── Resolve the completion outcome ─────────────────────────────────────────────────────────────
+  // Two independent gates can hold points back; otherwise we auto-approve and award instantly:
+  //  1. AI photo verification — when the chore opted in AND an after photo was submitted, the vision
+  //     model's verdict drives the outcome (it exists to REPLACE a human approver).
+  //  2. Human approval — a family KID's work waits for a parent (only consulted when AI didn't run).
+
+  // 1. AI verification. verifyPhotos reads the R2 bytes itself (the model can't fetch our auth-gated
+  //    media URLs); any failure or unloadable photo returns null → we FLAG for a human, never a
+  //    silent pass. Synchronous on purpose: the client shows a "verifying…" state and the verdict.
+  let aiVerdict: Awaited<ReturnType<typeof verifyPhotos>> = null
+  const aiRan = a.aiVerificationEnabled && !!d.afterPhotoMediaId
+  if (aiRan) {
+    try {
+      aiVerdict = await verifyPhotos(c.env, createAI(c.env), {
+        orgId: ctx.orgId,
+        task: a.choreName,
+        instructions: a.choreDescription,
+        afterMediaId: d.afterPhotoMediaId!,
+        referenceMediaId: a.referencePhotoMediaId,
+      })
+    } catch {
+      aiVerdict = null
+    }
+  }
+
+  // 2. Human approval (only when AI didn't run).
+  const humanNeedsApproval =
     ctx.mode === 'family' && assignee.householdRole === 'kid' && org?.requireApproval === true && a.requiresApproval === true
+
+  const outcome: 'approved' | 'pending_approval' | 'rejected' = aiRan
+    ? aiVerdict?.decision === 'auto_approved'
+      ? 'approved'
+      : aiVerdict?.decision === 'auto_rejected'
+        ? 'rejected'
+        : 'pending_approval' // flagged, or verification unavailable → a human takes a look
+    : humanNeedsApproval
+      ? 'pending_approval'
+      : 'approved'
 
   const [completion] = await db
     .insert(schema.completion)
@@ -139,17 +179,34 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
       actualMinutes: d.actualMinutes ?? null,
       pointsEarned: breakdown.total,
       speedBonus: breakdown.speedBonus,
-      needsApproval,
-      status: needsApproval ? 'pending_approval' : 'approved',
+      needsApproval: outcome === 'pending_approval',
+      status: outcome,
+      rejectionReason: outcome === 'rejected' ? (aiVerdict?.reasoning ?? null) : null,
     })
     .returning()
 
+  // Persist the AI verdict next to the completion (audit trail + UI surface).
+  if (aiVerdict) {
+    await db.insert(schema.aiVerification).values({
+      organizationId: ctx.orgId,
+      completionId: completion.id,
+      provider: aiVerdict.provider,
+      model: aiVerdict.model,
+      confidenceScore: aiVerdict.score,
+      referenceMatchScore: aiVerdict.referenceMatch,
+      reasoning: aiVerdict.reasoning,
+      decision: aiVerdict.decision,
+    })
+  }
+
+  // Approved → assignment done + points awarded. Rejected → back to in_progress for a redo (no points).
+  // Pending → awaits a human; points award on /approve.
   await db
     .update(schema.assignment)
-    .set({ status: needsApproval ? 'pending_review' : 'completed' })
+    .set({ status: outcome === 'approved' ? 'completed' : outcome === 'rejected' ? 'in_progress' : 'pending_review' })
     .where(eq(schema.assignment.id, a.id))
 
-  if (!needsApproval) {
+  if (outcome === 'approved') {
     await awardCompletion(db, {
       orgId: ctx.orgId,
       timezone: tz,
@@ -163,10 +220,15 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   await audit(c, {
     entityType: 'completion',
     entityId: completion.id,
-    action: needsApproval ? 'completion.pending_approval' : 'completion.approved',
-    metadata: { points: breakdown.total },
+    action:
+      outcome === 'approved'
+        ? 'completion.approved'
+        : outcome === 'rejected'
+          ? 'completion.rejected'
+          : 'completion.pending_approval',
+    metadata: { points: breakdown.total, ...(aiVerdict ? { aiDecision: aiVerdict.decision, aiScore: aiVerdict.score } : {}) },
   })
-  return c.json({ completion, breakdown, needsApproval }, 201)
+  return c.json({ completion, breakdown, needsApproval: outcome === 'pending_approval', aiVerdict }, 201)
 })
 
 completionRoutes.get('/:orgId/completions', requireOrg, async (c) => {

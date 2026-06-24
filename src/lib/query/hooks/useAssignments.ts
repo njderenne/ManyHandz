@@ -98,7 +98,22 @@ export type CompleteInput = {
   notes?: string | null
   actualMinutes?: number | null
 }
-export type CompleteResult = { completion: { id: string; status: string }; breakdown: PointsBreakdown; needsApproval: boolean }
+/** The AI photo-verification verdict (when the chore had AI verification on + an after photo). */
+export type AiVerdict = {
+  score: number
+  referenceMatch: number | null
+  reasoning: string
+  decision: 'auto_approved' | 'flagged_for_review' | 'auto_rejected'
+  provider: string
+  model: string
+}
+export type CompleteResult = {
+  completion: { id: string; status: string }
+  breakdown: PointsBreakdown
+  needsApproval: boolean
+  /** Present (and non-null) only when AI verification ran for this completion. */
+  aiVerdict: AiVerdict | null
+}
 
 /** Complete an assignment — runs the points engine; pending_approval for a kid, else awarded instantly. */
 export function useCompleteAssignment(orgId: string) {
