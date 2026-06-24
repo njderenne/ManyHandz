@@ -18,6 +18,8 @@ export type ChoreInput = {
   icon?: string
   requiresApproval?: boolean
   aiVerificationEnabled?: boolean
+  /** The "here's what done looks like" reference photo (a media id) the AI verifier compares against. */
+  referencePhotoMediaId?: string | null
   checklist?: ChoreChecklistStep[]
 }
 

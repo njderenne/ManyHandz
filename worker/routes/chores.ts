@@ -32,6 +32,8 @@ const choreCreate = z.object({
   icon: z.string().max(40).optional(),
   requiresApproval: z.boolean().optional(),
   aiVerificationEnabled: z.boolean().optional(),
+  /** The "here's what done looks like" reference photo — a media id the AI verifier compares against. */
+  referencePhotoMediaId: z.string().max(64).nullish(),
   checklist: checklistSchema.optional(),
 })
 const choreUpdate = choreCreate.partial()
@@ -87,6 +89,7 @@ choreRoutes.post('/:orgId/chores', requireOrg, requirePermission('createChores')
       icon: d.icon ?? 'sparkles',
       requiresApproval: d.requiresApproval ?? true,
       aiVerificationEnabled: d.aiVerificationEnabled ?? false,
+      referencePhotoMediaId: d.referencePhotoMediaId ?? null,
       checklist: d.checklist ?? [],
       createdByMemberId: memberId,
     })
@@ -113,6 +116,7 @@ choreRoutes.patch('/:orgId/chores/:choreId', requireOrg, requirePermission('crea
   if (d.icon !== undefined) updates.icon = d.icon
   if (d.requiresApproval !== undefined) updates.requiresApproval = d.requiresApproval
   if (d.aiVerificationEnabled !== undefined) updates.aiVerificationEnabled = d.aiVerificationEnabled
+  if (d.referencePhotoMediaId !== undefined) updates.referencePhotoMediaId = d.referencePhotoMediaId ?? null
   if (d.checklist !== undefined) updates.checklist = d.checklist
   if (Object.keys(updates).length === 0) return c.json({ error: 'no fields to update' }, 400)
 

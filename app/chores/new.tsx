@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { View, Pressable, ScrollView } from 'react-native'
 import { router, Stack } from 'expo-router'
-import { Plus, X } from 'lucide-react-native'
+import { Camera, ImageIcon, Plus, X } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,9 @@ import { useHouseholdMode } from '@/lib/hooks/useHouseholdMode'
 import { useSession } from '@/lib/auth/client'
 import { useCreateChore, useChoreCategories, type ChoreChecklistStep } from '@/lib/query/hooks/useChores'
 import { CHORE_ICON_KEYS, iconFor } from '@/lib/manyhandz/icons'
+import { MediaImage } from '@/components/ui/media-image'
+import { pickImage, takePhoto } from '@/lib/native/image-picker'
+import { uploadMedia, MediaNotConfiguredError } from '@/lib/media/upload'
 
 /**
  * New chore — the create form (pairs with the list at app/chores/index.tsx and the detail/edit at
@@ -53,6 +56,7 @@ export default function NewChoreScreen() {
   const [checklist, setChecklist] = useState<ChoreChecklistStep[]>([])
   const [requiresApproval, setRequiresApproval] = useState(true)
   const [aiVerification, setAiVerification] = useState(false)
+  const [referenceMediaId, setReferenceMediaId] = useState<string | null>(null)
 
   const categoryOptions = [
     { label: 'No category', value: NONE },
@@ -75,6 +79,7 @@ export default function NewChoreScreen() {
         checklist: checklist.filter((s) => s.label.trim().length > 0),
         requiresApproval,
         aiVerificationEnabled: showAi ? aiVerification : false,
+        referencePhotoMediaId: showAi && aiVerification ? referenceMediaId : null,
       },
       {
         onSuccess: (row) => {
@@ -174,10 +179,16 @@ export default function NewChoreScreen() {
                 {showAi ? (
                   <ToggleRow
                     label="AI photo verification"
-                    hint="Check before/after photos automatically when this chore is completed."
+                    hint="When completed with an 'after' photo, AI checks it automatically."
                     value={aiVerification}
                     onValueChange={setAiVerification}
                   />
+                ) : null}
+                {/* "Here's what done looks like" — shown only once AI verification is on, since that's
+                    the only thing that uses it. Optional: with no goal photo the AI judges the after
+                    photo against the chore name/description instead. */}
+                {showAi && aiVerification ? (
+                  <ReferencePhotoField mediaId={referenceMediaId} onChange={setReferenceMediaId} toast={toast} />
                 ) : null}
               </CardContent>
             </Card>
@@ -335,6 +346,72 @@ function ChecklistEditor({
         <Button variant="outline" size="sm" icon={Plus} label="Add step" onPress={add} className="self-start" />
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * "Here's what done looks like" — captures/uploads the gold-standard reference photo the AI verifier
+ * compares against (chore.referencePhotoMediaId). Optional: skipping it just means the AI judges the
+ * after photo against the chore name/description. Mirrors the assignment photo-capture flow.
+ */
+function ReferencePhotoField({
+  mediaId,
+  onChange,
+  toast,
+}: {
+  mediaId: string | null
+  onChange: (id: string | null) => void
+  toast: ReturnType<typeof useToast>['toast']
+}) {
+  const [uploading, setUploading] = useState(false)
+
+  const attach = async (source: 'camera' | 'library') => {
+    const uri = source === 'camera' ? await takePhoto() : await pickImage()
+    if (!uri) return
+    setUploading(true)
+    try {
+      const media = await uploadMedia(uri)
+      onChange(media.id)
+    } catch (e) {
+      if (e instanceof MediaNotConfiguredError) {
+        toast({
+          title: 'Photos are not enabled',
+          description: 'AI will judge against the chore name instead.',
+          variant: 'default',
+        })
+      } else {
+        toast({ title: "Couldn't upload photo", description: (e as Error).message, variant: 'error' })
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <View className="gap-2">
+      <View>
+        <Text variant="label">What does “done” look like?</Text>
+        <Text variant="caption">Optional — the AI compares the “after” photo to this goal shot.</Text>
+      </View>
+      {mediaId ? (
+        <View className="gap-2">
+          <MediaImage mediaId={mediaId} mimeType="image/jpeg" style={{ width: '100%', height: 180, borderRadius: 12 }} />
+          <View className="flex-row gap-2">
+            <Button variant="outline" size="sm" label="Replace" onPress={() => attach('library')} className="flex-1" />
+            <Button variant="ghost" size="sm" label="Remove" onPress={() => onChange(null)} />
+          </View>
+        </View>
+      ) : uploading ? (
+        <View className="h-32 items-center justify-center rounded-xl border border-dashed border-border bg-card">
+          <Spinner />
+        </View>
+      ) : (
+        <View className="flex-row gap-2">
+          <Button variant="outline" size="sm" icon={Camera} label="Camera" onPress={() => attach('camera')} className="flex-1" />
+          <Button variant="outline" size="sm" icon={ImageIcon} label="Library" onPress={() => attach('library')} className="flex-1" />
+        </View>
+      )}
+    </View>
   )
 }
 
