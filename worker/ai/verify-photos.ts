@@ -36,7 +36,17 @@ export type VerifyInput = {
   /** Optional extra guidance, e.g. the chore description ("dishes away, counters wiped"). */
   instructions?: string | null
   afterMediaId: string
+  /**
+   * PREFERRED: a pre-computed TEXT rubric of "what done looks like" (from describeReference). Judging
+   * against text means we don't re-upload (or re-pay for) the reference IMAGE on every check.
+   */
+  referenceRubric?: string | null
+  /** The reference "done" photo — used ONLY as a fallback when no rubric exists (costs an extra image). */
   referenceMediaId?: string | null
+  /** Score (0-100) at/above which the verdict auto-approves. Default 85. */
+  autoApproveThreshold?: number
+  /** Score (0-100) at/below which it auto-rejects ("try again"); between the two thresholds → flagged. Default 40. */
+  autoRejectThreshold?: number
 }
 
 function toBase64(buf: ArrayBuffer): string {
@@ -90,28 +100,32 @@ export async function verifyPhotos(
 ): Promise<{ verdict: VerifyVerdict; usage: { inputTokens: number; outputTokens: number } } | null> {
   const after = await mediaDataUri(env, input.orgId, input.afterMediaId)
   if (!after) return null
-  const reference = input.referenceMediaId
-    ? await mediaDataUri(env, input.orgId, input.referenceMediaId)
-    : null
+
+  // Goal context: PREFER the cheap pre-computed text rubric. Only fall back to the reference IMAGE when
+  // there's no rubric (older chores, or the describer hasn't run) — that path costs an extra image.
+  const rubric = input.referenceRubric?.trim() || null
+  const referenceImage =
+    !rubric && input.referenceMediaId ? await mediaDataUri(env, input.orgId, input.referenceMediaId) : null
+  const hasGoal = !!(rubric || referenceImage)
 
   const images: string[] = []
   const labels: string[] = []
-  if (reference) {
-    images.push(reference)
+  if (referenceImage) {
+    images.push(referenceImage)
     labels.push(`Image ${images.length} is the REFERENCE — what the finished task should look like.`)
   }
   images.push(after)
   labels.push(`Image ${images.length} is the submitted AFTER photo to judge.`)
 
   const prompt = [
-    'You are verifying whether a task was actually completed, from photo(s).',
+    'You are verifying whether a task was actually completed, from a photo.',
     `Task: "${input.task}"`,
     input.instructions ? `Notes: ${input.instructions}` : '',
+    rubric ? `This is what "done" looks like — the standard to judge against:\n${rubric}` : '',
     labels.join('\n'),
-    'Judge whether the AFTER photo shows the task genuinely done to a reasonable standard. Be lenient on photo quality, framing, and lighting; be strict about whether the actual work is complete. If you genuinely cannot tell, FLAG it for a human rather than rejecting.',
+    'Judge whether the AFTER photo shows the task genuinely done to that standard. Be lenient on photo quality, framing, and lighting; be strict about whether the actual work is complete.',
     'Reply with ONLY a JSON object — no prose, no code fences:',
-    '{"score": <integer 0-100, confidence the task is done well>, "referenceMatch": <integer 0-100 or null>, "reasoning": "<one or two sentences a parent would read>", "decision": "auto_approved" | "flagged_for_review" | "auto_rejected"}',
-    'Use auto_approved only when it is clearly done, auto_rejected only when it is clearly NOT done, and flagged_for_review for anything in between.',
+    `{"score": <integer 0-100, your confidence the task is done well>, "referenceMatch": <integer 0-100${hasGoal ? '' : ' or null'}, how well it matches the goal>, "reasoning": "<one or two sentences a parent would read>"}`,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -120,20 +134,47 @@ export async function verifyPhotos(
   const model = ai.models.verify
   const { text: raw, usage } = await ai.vision(prompt, images, { model })
   const json = extractJson(raw)
-  const decision: VerifyDecision =
-    json?.decision === 'auto_approved' || json?.decision === 'auto_rejected'
-      ? json.decision
-      : 'flagged_for_review'
+  const score = clampScore(json?.score, 50)
+  // Policy, not perception: the MODEL reports a confidence score; WE derive the bucket from the
+  // household's thresholds. ≥ approve → pass; ≤ reject → "try again"; in between → a human looks.
+  const approveAt = clampScore(input.autoApproveThreshold, 85)
+  const rejectAt = clampScore(input.autoRejectThreshold, 40)
   const verdict: VerifyVerdict = {
-    score: clampScore(json?.score, 50),
-    referenceMatch: reference ? clampScore(json?.referenceMatch, 50) : null,
+    score,
+    referenceMatch: hasGoal ? clampScore(json?.referenceMatch, score) : null,
     reasoning:
       typeof json?.reasoning === 'string' && json.reasoning.trim()
         ? json.reasoning.trim().slice(0, 600)
         : 'The reviewer could not produce a clear assessment.',
-    decision,
+    decision: score >= approveAt ? 'auto_approved' : score <= rejectAt ? 'auto_rejected' : 'flagged_for_review',
     provider: ai.providerForModel(model),
     model,
   }
   return { verdict, usage }
+}
+
+/**
+ * One-time "what does done look like?" — sends the REFERENCE photo to the model ONCE and returns a short
+ * text rubric to STORE on the task. Verification then judges against that text (1 image per check)
+ * instead of re-uploading and re-paying for the reference image every time. Regenerate when the
+ * reference photo changes. Returns null if the photo can't be loaded.
+ */
+export async function describeReference(
+  env: Env,
+  ai: AI,
+  input: { orgId: string; task: string; instructions?: string | null; referenceMediaId: string },
+): Promise<{ rubric: string; usage: { inputTokens: number; outputTokens: number } } | null> {
+  const ref = await mediaDataUri(env, input.orgId, input.referenceMediaId)
+  if (!ref) return null
+  const prompt = [
+    `This photo shows what a COMPLETED task should look like. Task: "${input.task}".`,
+    input.instructions ? `Notes: ${input.instructions}` : '',
+    'Write a short, concrete checklist a reviewer can use later to judge whether another photo shows the task done — name what must be PRESENT and what must be ABSENT / clean / tidy. 2–4 short plain sentences, no preamble, no markdown.',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+  const model = ai.models.verify
+  const { text, usage } = await ai.vision(prompt, ref, { model })
+  const rubric = text.trim().slice(0, 1200)
+  return rubric ? { rubric, usage } : null
 }

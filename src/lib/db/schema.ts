@@ -962,6 +962,9 @@ export const chore = pgTable(
     icon: text('icon').notNull().default('sparkles'),
     /** Gold-standard reference photo ("The Goal"); R2 media row. */
     referencePhotoMediaId: text('reference_photo_media_id').references(() => media.id, { onDelete: 'set null' }),
+    /** Text rubric of "what done looks like", derived ONCE from the reference photo (describeReference)
+     *  so verification judges against text instead of re-sending the reference image each check. */
+    referenceRubric: text('reference_rubric'),
     aiVerificationEnabled: boolean('ai_verification_enabled').notNull().default(false),
     requiresApproval: boolean('requires_approval').notNull().default(true),
     /** Ordered checklist steps. */

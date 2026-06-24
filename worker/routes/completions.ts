@@ -83,11 +83,15 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requir
       assignedToMemberId: schema.assignment.assignedToMemberId,
       aiVerificationEnabled: schema.chore.aiVerificationEnabled,
       referencePhotoMediaId: schema.chore.referencePhotoMediaId,
+      referenceRubric: schema.chore.referenceRubric,
       choreName: schema.chore.name,
       choreDescription: schema.chore.description,
+      autoApproveThreshold: schema.organization.aiAutoApproveThreshold,
+      autoRejectThreshold: schema.organization.aiAutoRejectThreshold,
     })
     .from(schema.assignment)
     .innerJoin(schema.chore, eq(schema.chore.id, schema.assignment.choreId))
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.assignment.organizationId))
     .where(and(eq(schema.assignment.id, assignmentId), eq(schema.assignment.organizationId, ctx.orgId)))
     .limit(1)
   if (!a) return c.json({ error: 'not found' }, 404)
@@ -106,7 +110,10 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requir
     task: a.choreName,
     instructions: a.choreDescription,
     afterMediaId: parsed.data.afterPhotoMediaId,
+    referenceRubric: a.referenceRubric,
     referenceMediaId: a.referencePhotoMediaId,
+    autoApproveThreshold: a.autoApproveThreshold,
+    autoRejectThreshold: a.autoRejectThreshold,
   })
   if (!result) return c.json({ error: "Couldn't check that photo — you can still submit it for review." }, 502)
   const { verdict, usage } = result
@@ -154,6 +161,7 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
       requiresApproval: schema.chore.requiresApproval,
       aiVerificationEnabled: schema.chore.aiVerificationEnabled,
       referencePhotoMediaId: schema.chore.referencePhotoMediaId,
+      referenceRubric: schema.chore.referenceRubric,
       choreName: schema.chore.name,
       choreDescription: schema.chore.description,
     })
@@ -182,9 +190,14 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
 
-  // Household config (timezone, requireApproval) for the points/approval calc.
+  // Household config (timezone, approval policy, AI verify thresholds) for the points/approval calc.
   const [org] = await db
-    .select({ timezone: schema.organization.timezone, requireApproval: schema.organization.requireApproval })
+    .select({
+      timezone: schema.organization.timezone,
+      requireApproval: schema.organization.requireApproval,
+      autoApproveThreshold: schema.organization.aiAutoApproveThreshold,
+      autoRejectThreshold: schema.organization.aiAutoRejectThreshold,
+    })
     .from(schema.organization)
     .where(eq(schema.organization.id, ctx.orgId))
     .limit(1)
@@ -241,7 +254,10 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
           task: a.choreName,
           instructions: a.choreDescription,
           afterMediaId: d.afterPhotoMediaId!,
+          referenceRubric: a.referenceRubric,
           referenceMediaId: a.referencePhotoMediaId,
+          autoApproveThreshold: org?.autoApproveThreshold,
+          autoRejectThreshold: org?.autoRejectThreshold,
         })
         aiVerdict = result?.verdict ?? null
         if (result) {

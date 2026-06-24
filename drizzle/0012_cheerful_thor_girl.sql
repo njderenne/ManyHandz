@@ -1,0 +1,1 @@
+ALTER TABLE "chore" ADD COLUMN "reference_rubric" text;

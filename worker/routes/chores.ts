@@ -4,6 +4,47 @@ import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg, audit } from '../middleware/org'
 import { requirePermission, type HouseholdEnv } from '../household'
+import { createAI } from '../ai'
+import { describeReference } from '../ai/verify-photos'
+import { logApiUsage } from '../usage/log'
+
+/**
+ * Fire-and-forget: derive the "what done looks like" rubric from a chore's reference photo and store it,
+ * so verification judges against TEXT (1 image/check) instead of re-sending the reference image every
+ * time. Runs on create/edit when the reference photo is set or changed; clears the rubric when removed.
+ */
+async function refreshRubric(
+  env: HouseholdEnv['Bindings'],
+  orgId: string,
+  chore: { id: string; name: string; description: string | null; referencePhotoMediaId: string | null },
+): Promise<void> {
+  const db = getDb(env.DATABASE_URL)
+  if (!chore.referencePhotoMediaId) {
+    await db.update(schema.chore).set({ referenceRubric: null }).where(and(eq(schema.chore.id, chore.id), eq(schema.chore.organizationId, orgId)))
+    return
+  }
+  const ai = createAI(env)
+  const started = Date.now()
+  const res = await describeReference(env, ai, {
+    orgId,
+    task: chore.name,
+    instructions: chore.description,
+    referenceMediaId: chore.referencePhotoMediaId,
+  })
+  if (!res) return
+  await db.update(schema.chore).set({ referenceRubric: res.rubric }).where(and(eq(schema.chore.id, chore.id), eq(schema.chore.organizationId, orgId)))
+  await logApiUsage(env, {
+    organizationId: orgId,
+    provider: ai.providerForModel(ai.models.verify),
+    feature: 'chore.reference_rubric',
+    operation: ai.models.verify,
+    inputUnits: res.usage.inputTokens,
+    outputUnits: res.usage.outputTokens,
+    unitKind: 'tokens',
+    ok: true,
+    latencyMs: Date.now() - started,
+  })
+}
 
 /**
  * Chores — the reusable chore definitions for a household. The canonical ManyHandz resource route:
@@ -94,6 +135,8 @@ choreRoutes.post('/:orgId/chores', requireOrg, requirePermission('createChores')
       createdByMemberId: memberId,
     })
     .returning()
+  // Pre-compute the reference rubric once (off the request path) so checks judge against text, not the image.
+  if (row.referencePhotoMediaId) c.executionCtx.waitUntil(refreshRubric(c.env, orgId, row))
   await audit(c, { entityType: 'chore', entityId: row.id, action: 'chore.created', metadata: { name: row.name } })
   return c.json(row, 201)
 })
@@ -132,6 +175,8 @@ choreRoutes.patch('/:orgId/chores/:choreId', requireOrg, requirePermission('crea
     )
     .returning()
   if (!row) return c.json({ error: 'not found' }, 404)
+  // Reference photo set/changed/removed → refresh (or clear) the cached rubric.
+  if (d.referencePhotoMediaId !== undefined) c.executionCtx.waitUntil(refreshRubric(c.env, orgId, row))
   await audit(c, { entityType: 'chore', entityId: row.id, action: 'chore.updated' })
   return c.json(row)
 })

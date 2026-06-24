@@ -85,6 +85,13 @@
       "when": 1782270537390,
       "tag": "0011_wakeful_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782274897456,
+      "tag": "0012_cheerful_thor_girl",
+      "breakpoints": true
     }
   ]
 }
