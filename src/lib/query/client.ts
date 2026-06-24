@@ -25,3 +25,18 @@ export const asyncPersister = createAsyncStoragePersister({
 })
 
 export const PERSIST_MAX_AGE = 1000 * 60 * 60 * 24 // 24h
+
+/**
+ * purgeQueryCache — drop BOTH the in-memory and the on-disk query cache. Call this whenever the
+ * account changes hands (sign-out, account deletion). Without it, the persisted snapshot (24h
+ * maxAge) rehydrates the previous user's data on the next account's cold start — a cross-user
+ * leak on shared devices. clear() drops memory; removeClient() deletes the AsyncStorage snapshot.
+ */
+export async function purgeQueryCache(): Promise<void> {
+  queryClient.clear()
+  try {
+    await asyncPersister.removeClient()
+  } catch {
+    // Best-effort — a storage hiccup must never surface as a failed sign-out/delete.
+  }
+}

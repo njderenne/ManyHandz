@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/toast'
 import { authClient, signOut, useSession } from '@/lib/auth/client'
 // Aliased — this screen has a local `signOutEverywhere` handler (revoke OTHER sessions).
 import { signOutEverywhere as performSignOut } from '@/lib/auth/sign-out'
+import { purgeQueryCache } from '@/lib/query/client'
 import { APP_CONFIG } from '@/lib/config/app'
 import { t } from '@/lib/i18n'
 
@@ -240,6 +241,7 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
             })
           } else {
             await signOut().catch(() => {}) // clear the local token; the server already revoked sessions
+            await purgeQueryCache() // drop this user's cached data before the next account signs in
             toast({ title: 'Account deleted', variant: 'success' })
             router.replace('/')
           }
