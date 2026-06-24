@@ -23,12 +23,20 @@ const DEFAULTS = {
   // xAI retired the grok-2 vision/image models (Feb 2026): vision now rides the multimodal
   // grok-4 line; generation moved to the grok-imagine family.
   vision: 'grok-4.3',
+  // Photo VERIFICATION defaults to the cheap multimodal model, not grok — "is this chore done" is a
+  // simple visual judgement and gpt-4o-mini is ~20x cheaper per check. Override AI_VERIFY_MODEL (e.g.
+  // 'grok-4.3') for higher-accuracy accounts.
+  verify: 'gpt-4o-mini',
   image: 'grok-imagine-image',
 }
 
 const XAI_BASE_URL = 'https://api.x.ai/v1'
 
 export type AIOptions = { system?: string; model?: string; maxTokens?: number }
+/** Token usage from a call — feeds the api_usage cost ledger. */
+export type AIUsage = { inputTokens: number; outputTokens: number }
+/** A text result plus the tokens it cost. */
+export type AIResult = { text: string; usage: AIUsage }
 
 export function createAI(env: Env) {
   let anthropic: Anthropic | undefined
@@ -43,6 +51,7 @@ export function createAI(env: Env) {
     reason: env.AI_REASON_MODEL ?? DEFAULTS.reason,
     complex: env.AI_COMPLEX_MODEL ?? DEFAULTS.complex,
     vision: env.AI_VISION_MODEL ?? DEFAULTS.vision,
+    verify: env.AI_VERIFY_MODEL ?? DEFAULTS.verify,
     image: env.AI_IMAGE_MODEL ?? DEFAULTS.image,
   }
 
@@ -51,6 +60,18 @@ export function createAI(env: Env) {
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('')
+
+  // Normalize each SDK's usage shape into { inputTokens, outputTokens } for the cost ledger.
+  const oaiUsage = (u?: { prompt_tokens?: number; completion_tokens?: number } | null): AIUsage => ({
+    inputTokens: u?.prompt_tokens ?? 0,
+    outputTokens: u?.completion_tokens ?? 0,
+  })
+  const claudeUsage = (u?: { input_tokens?: number; output_tokens?: number } | null): AIUsage => ({
+    inputTokens: u?.input_tokens ?? 0,
+    outputTokens: u?.output_tokens ?? 0,
+  })
+  // Vision/chat models are OpenAI-compatible: gpt-* → OpenAI client, anything else (grok-*) → xAI.
+  const visionClient = (model: string) => (model.startsWith('gpt') ? oai() : xai())
 
   return {
     /** Resolved model per tier (env overrides applied) — for usage logging and diagnostics. */
@@ -61,8 +82,13 @@ export function createAI(env: Env) {
       return tier === 'classify' ? 'openai' : tier === 'reason' || tier === 'complex' ? 'anthropic' : 'xai'
     },
 
+    /** Provider that bills a given model id — for logging a call whose model was overridden per-request. */
+    providerForModel(model: string): 'openai' | 'anthropic' | 'xai' {
+      return model.startsWith('claude') ? 'anthropic' : model.startsWith('grok') ? 'xai' : 'openai'
+    },
+
     /** Cheap, fast labelling / extraction — OpenAI. */
-    async classify(prompt: string, opts: AIOptions = {}): Promise<string> {
+    async classify(prompt: string, opts: AIOptions = {}): Promise<AIResult> {
       const res = await oai().chat.completions.create({
         model: opts.model ?? models.classify,
         messages: [
@@ -70,22 +96,22 @@ export function createAI(env: Env) {
           { role: 'user' as const, content: prompt },
         ],
       })
-      return res.choices[0]?.message?.content ?? ''
+      return { text: res.choices[0]?.message?.content ?? '', usage: oaiUsage(res.usage) }
     },
 
     /** Everyday reasoning — Claude Sonnet. */
-    async reason(prompt: string, opts: AIOptions = {}): Promise<string> {
+    async reason(prompt: string, opts: AIOptions = {}): Promise<AIResult> {
       const res = await claude().messages.create({
         model: opts.model ?? models.reason,
         max_tokens: opts.maxTokens ?? 4096,
         messages: [{ role: 'user', content: prompt }],
         ...(opts.system ? { system: opts.system } : {}),
       })
-      return textOf(res)
+      return { text: textOf(res), usage: claudeUsage(res.usage) }
     },
 
     /** Hardest reasoning — Claude Opus with adaptive thinking. */
-    async reasonComplex(prompt: string, opts: AIOptions = {}): Promise<string> {
+    async reasonComplex(prompt: string, opts: AIOptions = {}): Promise<AIResult> {
       const res = await claude().messages.create({
         model: opts.model ?? models.complex,
         max_tokens: opts.maxTokens ?? 16000,
@@ -93,35 +119,39 @@ export function createAI(env: Env) {
         messages: [{ role: 'user', content: prompt }],
         ...(opts.system ? { system: opts.system } : {}),
       })
-      return textOf(res)
+      return { text: textOf(res), usage: claudeUsage(res.usage) }
     },
 
     /**
-     * Streamed completion for the text tiers. Resolves once the provider stream is open (so
-     * callers can fail fast with a real status before any bytes go out), then yields text chunks
-     * as the model produces them. Thinking deltas (complex tier) are skipped — only user-visible
-     * text is streamed.
+     * Streamed completion for the text tiers. Resolves once the provider stream is open (so callers
+     * can fail fast with a real status before any bytes go out), then yields text chunks as the model
+     * produces them. Returns the chunks PLUS a `usage()` getter that's valid once the stream is fully
+     * consumed — for the cost ledger. Thinking deltas (complex tier) are skipped.
      */
     async stream(
       tier: 'classify' | 'reason' | 'complex',
       prompt: string,
       opts: AIOptions = {},
-    ): Promise<AsyncIterable<string>> {
+    ): Promise<{ chunks: AsyncIterable<string>; usage: () => AIUsage }> {
+      const usage: AIUsage = { inputTokens: 0, outputTokens: 0 }
       if (tier === 'classify') {
         const res = await oai().chat.completions.create({
           model: opts.model ?? models.classify,
           stream: true,
+          stream_options: { include_usage: true },
           messages: [
             ...(opts.system ? [{ role: 'system' as const, content: opts.system }] : []),
             { role: 'user' as const, content: prompt },
           ],
         })
-        return (async function* () {
+        const chunks = (async function* () {
           for await (const chunk of res) {
+            if (chunk.usage) Object.assign(usage, oaiUsage(chunk.usage))
             const text = chunk.choices[0]?.delta?.content
             if (text) yield text
           }
         })()
+        return { chunks, usage: () => usage }
       }
 
       const params: Anthropic.MessageCreateParamsStreaming = {
@@ -133,24 +163,27 @@ export function createAI(env: Env) {
         ...(opts.system ? { system: opts.system } : {}),
       }
       const res = await claude().messages.create(params)
-      return (async function* () {
+      const chunks = (async function* () {
         for await (const event of res) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            yield event.delta.text
-          }
+          if (event.type === 'message_start') usage.inputTokens = event.message.usage.input_tokens
+          else if (event.type === 'message_delta') usage.outputTokens = event.usage.output_tokens
+          else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') yield event.delta.text
         }
       })()
+      return { chunks, usage: () => usage }
     },
 
     /**
-     * Image understanding — Grok. Accepts one image or several (e.g. a reference "done" photo plus
-     * the submitted "after" photo for a side-by-side judgement); each becomes its own image_url part
-     * in the order given, so the prompt can refer to "Image 1 / Image 2".
+     * Image understanding — defaults to Grok, but routes to any OpenAI-compatible vision model
+     * (e.g. gpt-4o-mini, used for the cheaper chore verifier) via `opts.model`. Accepts one image or
+     * several (a reference "done" photo plus the submitted "after" photo); each becomes its own
+     * image_url part in order, so the prompt can refer to "Image 1 / Image 2". Returns the token usage.
      */
-    async vision(prompt: string, image: string | string[], opts: AIOptions = {}): Promise<string> {
+    async vision(prompt: string, image: string | string[], opts: AIOptions = {}): Promise<AIResult> {
+      const model = opts.model ?? models.vision
       const urls = Array.isArray(image) ? image : [image]
-      const res = await xai().chat.completions.create({
-        model: opts.model ?? models.vision,
+      const res = await visionClient(model).chat.completions.create({
+        model,
         messages: [
           {
             role: 'user',
@@ -161,10 +194,10 @@ export function createAI(env: Env) {
           },
         ],
       })
-      return res.choices[0]?.message?.content ?? ''
+      return { text: res.choices[0]?.message?.content ?? '', usage: oaiUsage(res.usage) }
     },
 
-    /** Image generation — Grok. Returns the generated image URL. */
+    /** Image generation — Grok. Returns the generated image URL. (Billed per image, not per token.) */
     async generateImage(prompt: string, opts: { model?: string } = {}): Promise<string | null> {
       const res = await xai().images.generate({ model: opts.model ?? models.image, prompt })
       return res.data?.[0]?.url ?? null

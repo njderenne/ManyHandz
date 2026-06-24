@@ -441,30 +441,45 @@ export const mediaRelations = relations(media, ({ one }) => ({
 // so apps extend them without a migration.
 
 /**
- * AI usage metering — one row per AI call, success or failure. Powers tier quotas (pairs with
- * worker/entitlements.ts), spend visibility, and failure auditing without combing server logs.
+ * API cost ledger — ONE row per billable external API call (AI, email, SMS, voice, image, …), so spend
+ * is trackable by app FUNCTION (`feature`), by `provider`, and by `operation` (model/endpoint), with the
+ * cost ESTIMATED at log time (worker/usage/pricing.ts). Generalizes the old ai_usage_log: AI calls record
+ * token counts; other providers record their own units (emails, characters, images, seconds). TEXT keys
+ * → new features/providers need no migration. Powers per-app/per-feature spend dashboards + tier quotas.
+ *
+ * `cost_micro_usd` is MICRO-dollars (millionths of a USD) so sub-cent AI calls keep precision: 500 = $0.0005.
  */
-export const aiUsageLog = pgTable(
-  'ai_usage_log',
+export const apiUsage = pgTable(
+  'api_usage',
   {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    organizationId: text('organization_id').references(() => organization.id, { onDelete: 'cascade' }),
+    organizationId: text('organization_id').references(() => organization.id, { onDelete: 'set null' }),
     userId: text('user_id').references(() => user.id, { onDelete: 'set null' }),
-    /** Stable feature key ('complete' | 'stream' | 'vision' | per-app) — TEXT so new features need no migration. */
+    /** The PAID provider — 'openai' | 'anthropic' | 'xai' | 'resend' | 'elevenlabs' | 'replicate' | 'twilio' | … */
+    provider: text('provider').notNull(),
+    /** The app FUNCTION that spent the money — 'chore.verify' | 'ai.complete' | 'ai.chat' | 'email.invite' | 'voice.tts' | … */
     feature: text('feature').notNull(),
-    provider: text('provider').notNull(), // 'anthropic' | 'openai' | 'xai' | …
-    model: text('model').notNull(),
-    inputTokens: integer('input_tokens'),
-    outputTokens: integer('output_tokens'),
+    /** The specific model/endpoint billed — 'gpt-4o-mini' | 'grok-4.3' | 'claude-opus-4-8' | 'send' | … */
+    operation: text('operation'),
+    /** Usage quantities; meaning per unitKind. AI: tokens in/out. Others: input_units carries the count. */
+    inputUnits: integer('input_units'),
+    outputUnits: integer('output_units'),
+    /** What input/output_units COUNT — 'tokens' | 'characters' | 'images' | 'seconds' | 'emails' | 'requests'. */
+    unitKind: text('unit_kind'),
+    /** Estimated cost in MICRO-USD (millionths of a dollar). Null when no rate is configured for this op. */
+    costMicroUsd: integer('cost_micro_usd'),
     ok: boolean('ok').notNull().default(true),
     /** Stable failure code when !ok — 'rate_limit' | 'quota_exceeded' | 'provider_error' | 'timeout' | 'invalid_input'. */
     errorCode: text('error_code'),
     latencyMs: integer('latency_ms'),
+    /** Freeform extras (request ids, sub-feature, retries) — never PII. */
+    meta: jsonb('meta').$type<Record<string, unknown>>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    index('ai_usage_user_idx').on(t.userId, t.createdAt),
-    index('ai_usage_org_idx').on(t.organizationId, t.createdAt),
+    index('api_usage_org_idx').on(t.organizationId, t.createdAt),
+    index('api_usage_feature_idx').on(t.feature, t.createdAt),
+    index('api_usage_provider_idx').on(t.provider, t.createdAt),
   ],
 )
 
@@ -1555,7 +1570,7 @@ export type Media = typeof media.$inferSelect
 export type WebhookEvent = typeof webhookEvent.$inferSelect
 export type Feedback = typeof feedback.$inferSelect
 export type Referral = typeof referral.$inferSelect
-export type AiUsageLogEntry = typeof aiUsageLog.$inferSelect
+export type ApiUsageEntry = typeof apiUsage.$inferSelect
 export type AiChatThread = typeof aiChatThread.$inferSelect
 export type AiChatMessage = typeof aiChatMessage.$inferSelect
 export type ShareToken = typeof shareToken.$inferSelect

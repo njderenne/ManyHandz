@@ -9,8 +9,9 @@ import { computePoints, type CompletionPhotos } from '@/lib/manyhandz/points'
 import { todayInTz, compareDate } from '@/lib/manyhandz/dates'
 import { awardCompletion } from '../manyhandz/completion-engine'
 import { createAI } from '../ai'
-import { verifyPhotos } from '../ai/verify-photos'
+import { verifyPhotos, type VerifyVerdict } from '../ai/verify-photos'
 import { signVerdict, verifyVerdictToken } from '../ai/verify-token'
+import { logApiUsage } from '../usage/log'
 
 /**
  * Completions + approval — the centerpiece. Completing an assignment runs the CANONICAL points
@@ -99,14 +100,33 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requir
   const parsed = previewInput.safeParse(await c.req.json().catch(() => ({})))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
 
-  const verdict = await verifyPhotos(c.env, createAI(c.env), {
+  const started = Date.now()
+  const result = await verifyPhotos(c.env, createAI(c.env), {
     orgId: ctx.orgId,
     task: a.choreName,
     instructions: a.choreDescription,
     afterMediaId: parsed.data.afterPhotoMediaId,
     referenceMediaId: a.referencePhotoMediaId,
   })
-  if (!verdict) return c.json({ error: "Couldn't check that photo — you can still submit it for review." }, 502)
+  if (!result) return c.json({ error: "Couldn't check that photo — you can still submit it for review." }, 502)
+  const { verdict, usage } = result
+
+  // Record the cost of this check (the model call happens HERE, not on commit — the commit reuses
+  // this verdict via the signed token). One api_usage row per actual check, incl. retakes.
+  c.executionCtx.waitUntil(
+    logApiUsage(c.env, {
+      organizationId: ctx.orgId,
+      provider: verdict.provider,
+      feature: 'chore.verify',
+      operation: verdict.model,
+      inputUnits: usage.inputTokens,
+      outputUnits: usage.outputTokens,
+      unitKind: 'tokens',
+      ok: true,
+      latencyMs: Date.now() - started,
+      meta: { decision: verdict.decision, score: verdict.score, stage: 'preview' },
+    }),
+  )
 
   const token = await signVerdict(c.env.BETTER_AUTH_SECRET, {
     assignmentId: a.id,
@@ -197,7 +217,7 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   // 1. AI verification. verifyPhotos reads the R2 bytes itself (the model can't fetch our auth-gated
   //    media URLs); any failure or unloadable photo returns null → we FLAG for a human, never a
   //    silent pass. Synchronous on purpose: the client shows a "verifying…" state and the verdict.
-  let aiVerdict: Awaited<ReturnType<typeof verifyPhotos>> = null
+  let aiVerdict: VerifyVerdict | null = null
   // reviewedByUser = the verdict came from a signed /verify-preview token, i.e. the user already SAW it
   // and chose to submit. That consent flips an auto_rejected verdict from a hard "redo" into a
   // "send for a human's eyes" — the user is allowed to override the AI, just not silently bypass it.
@@ -213,14 +233,33 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
       }
     }
     if (!aiVerdict) {
+      // No (valid) token → run it inline now, and meter it (the token path already metered at preview).
       try {
-        aiVerdict = await verifyPhotos(c.env, createAI(c.env), {
+        const started = Date.now()
+        const result = await verifyPhotos(c.env, createAI(c.env), {
           orgId: ctx.orgId,
           task: a.choreName,
           instructions: a.choreDescription,
           afterMediaId: d.afterPhotoMediaId!,
           referenceMediaId: a.referencePhotoMediaId,
         })
+        aiVerdict = result?.verdict ?? null
+        if (result) {
+          c.executionCtx.waitUntil(
+            logApiUsage(c.env, {
+              organizationId: ctx.orgId,
+              provider: result.verdict.provider,
+              feature: 'chore.verify',
+              operation: result.verdict.model,
+              inputUnits: result.usage.inputTokens,
+              outputUnits: result.usage.outputTokens,
+              unitKind: 'tokens',
+              ok: true,
+              latencyMs: Date.now() - started,
+              meta: { decision: result.verdict.decision, score: result.verdict.score, stage: 'complete' },
+            }),
+          )
+        }
       } catch {
         aiVerdict = null
       }

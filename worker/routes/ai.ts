@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db'
 import { requireSession, requireOrg, type AuthEnv } from '../middleware/org'
 import { requireTier } from '../entitlements'
 import { createAI } from '../ai'
-import { logAiUsage } from '../ai/usage'
+import { logApiUsage } from '../usage/log'
 
 /**
  * AI routes — app-layer authorization: every call requires a session. Picks the cost tier per
@@ -47,15 +47,16 @@ aiRoutes.post('/complete', requireSession, async (c) => {
   const meter = {
     organizationId: session.session.activeOrganizationId,
     userId: session.user.id,
-    feature: 'complete',
+    feature: 'ai.complete',
     provider: ai.providerFor(tier),
-    model: ai.models[tier],
+    operation: ai.models[tier],
+    unitKind: 'tokens',
   }
   const startedAt = Date.now()
 
-  let text: string
+  let result: { text: string; usage: { inputTokens: number; outputTokens: number } }
   try {
-    text =
+    result =
       tier === 'classify'
         ? await ai.classify(prompt, { system })
         : tier === 'complex'
@@ -63,13 +64,21 @@ aiRoutes.post('/complete', requireSession, async (c) => {
           : await ai.reason(prompt, { system })
   } catch (e) {
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
+      logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
     return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
   }
 
-  c.executionCtx.waitUntil(logAiUsage(c.env, { ...meter, ok: true, latencyMs: Date.now() - startedAt }))
-  return c.json({ text, tier })
+  c.executionCtx.waitUntil(
+    logApiUsage(c.env, {
+      ...meter,
+      ok: true,
+      inputUnits: result.usage.inputTokens,
+      outputUnits: result.usage.outputTokens,
+      latencyMs: Date.now() - startedAt,
+    }),
+  )
+  return c.json({ text: result.text, tier })
 })
 
 aiRoutes.post('/stream', requireSession, async (c) => {
@@ -88,18 +97,19 @@ aiRoutes.post('/stream', requireSession, async (c) => {
   const meter = {
     organizationId: session.session.activeOrganizationId,
     userId: session.user.id,
-    feature: 'stream',
+    feature: 'ai.stream',
     provider: ai.providerFor(tier),
-    model: ai.models[tier],
+    operation: ai.models[tier],
+    unitKind: 'tokens',
   }
   const startedAt = Date.now()
 
-  let chunks: AsyncIterable<string>
+  let streamRes: { chunks: AsyncIterable<string>; usage: () => { inputTokens: number; outputTokens: number } }
   try {
-    chunks = await ai.stream(tier, prompt, { system })
+    streamRes = await ai.stream(tier, prompt, { system })
   } catch (e) {
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
+      logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
     return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
   }
@@ -107,15 +117,18 @@ aiRoutes.post('/stream', requireSession, async (c) => {
   return streamText(c, async (stream) => {
     let ok = true
     try {
-      for await (const chunk of chunks) await stream.write(chunk)
+      for await (const chunk of streamRes.chunks) await stream.write(chunk)
     } catch {
       // Upstream died mid-stream — just close; the client shows what arrived.
       ok = false
     }
+    const usage = streamRes.usage() // valid now the stream is fully consumed
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, {
+      logApiUsage(c.env, {
         ...meter,
         ok,
+        inputUnits: usage.inputTokens,
+        outputUnits: usage.outputTokens,
         errorCode: ok ? null : 'provider_error',
         latencyMs: Date.now() - startedAt,
       }),
@@ -139,24 +152,33 @@ aiRoutes.post('/vision', requireSession, async (c) => {
   const meter = {
     organizationId: session.session.activeOrganizationId,
     userId: session.user.id,
-    feature: 'vision',
+    feature: 'ai.vision',
     provider: ai.providerFor('vision'),
-    model: ai.models.vision,
+    operation: ai.models.vision,
+    unitKind: 'tokens',
   }
   const startedAt = Date.now()
 
-  let text: string
+  let result: { text: string; usage: { inputTokens: number; outputTokens: number } }
   try {
-    text = await ai.vision(prompt ?? 'Describe this image.', image)
+    result = await ai.vision(prompt ?? 'Describe this image.', image)
   } catch (e) {
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
+      logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
     return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
   }
 
-  c.executionCtx.waitUntil(logAiUsage(c.env, { ...meter, ok: true, latencyMs: Date.now() - startedAt }))
-  return c.json({ text })
+  c.executionCtx.waitUntil(
+    logApiUsage(c.env, {
+      ...meter,
+      ok: true,
+      inputUnits: result.usage.inputTokens,
+      outputUnits: result.usage.outputTokens,
+      latencyMs: Date.now() - startedAt,
+    }),
+  )
+  return c.json({ text: result.text })
 })
 
 aiRoutes.post('/image', requireOrg, async (c) => {
@@ -179,9 +201,10 @@ aiRoutes.post('/image', requireOrg, async (c) => {
   const meter = {
     organizationId: orgId,
     userId: session.user.id,
-    feature: 'image',
+    feature: 'ai.image',
     provider: ai.providerFor('image'),
-    model: ai.models.image,
+    operation: ai.models.image,
+    unitKind: 'images',
   }
   const startedAt = Date.now()
 
@@ -190,11 +213,12 @@ aiRoutes.post('/image', requireOrg, async (c) => {
     url = await ai.generateImage(prompt)
   } catch (e) {
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
+      logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
     return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
   }
 
-  c.executionCtx.waitUntil(logAiUsage(c.env, { ...meter, ok: true, latencyMs: Date.now() - startedAt }))
+  // Generation is billed per image, not per token → log one image unit.
+  c.executionCtx.waitUntil(logApiUsage(c.env, { ...meter, ok: true, inputUnits: 1, latencyMs: Date.now() - startedAt }))
   return c.json({ url })
 })

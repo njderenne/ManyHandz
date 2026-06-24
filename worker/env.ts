@@ -32,6 +32,7 @@ export interface Env {
   AI_REASON_MODEL?: string
   AI_COMPLEX_MODEL?: string
   AI_VISION_MODEL?: string
+  AI_VERIFY_MODEL?: string
   AI_IMAGE_MODEL?: string
   // Voice (ElevenLabs) — Worker secret + optional voice/model overrides
   ELEVENLABS_API_KEY?: string

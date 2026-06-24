@@ -4,7 +4,7 @@ import { and, asc, desc, eq, gt, isNull, lt } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg, type AuthEnv } from '../middleware/org'
 import { createAI } from '../ai'
-import { logAiUsage } from '../ai/usage'
+import { logApiUsage } from '../usage/log'
 
 /**
  * AI chat — multi-turn assistant conversations (ai_chat_thread / ai_chat_message). The reference
@@ -279,18 +279,19 @@ chatRoutes.post('/:orgId/chat/threads/:threadId/messages', requireOrg, async (c)
   const meter = {
     organizationId: orgId,
     userId: session.user.id,
-    feature: 'chat',
+    feature: 'ai.chat',
     provider: ai.providerFor('reason'),
-    model: ai.models.reason,
+    operation: ai.models.reason,
+    unitKind: 'tokens',
   }
   const startedAt = Date.now()
 
-  let chunks: AsyncIterable<string>
+  let streamRes: { chunks: AsyncIterable<string>; usage: () => { inputTokens: number; outputTokens: number } }
   try {
-    chunks = await ai.stream('reason', prompt, { system: CHAT_SYSTEM })
+    streamRes = await ai.stream('reason', prompt, { system: CHAT_SYSTEM })
   } catch (e) {
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
+      logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
     // The user message above is already persisted — the client re-syncs and offers retry.
     return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
@@ -300,7 +301,7 @@ chatRoutes.post('/:orgId/chat/threads/:threadId/messages', requireOrg, async (c)
     let ok = true
     let full = ''
     try {
-      for await (const chunk of chunks) {
+      for await (const chunk of streamRes.chunks) {
         full += chunk
         await stream.write(chunk)
       }
@@ -319,7 +320,7 @@ chatRoutes.post('/:orgId/chat/threads/:threadId/messages', requireOrg, async (c)
           role: 'assistant',
           content: full,
           provider: meter.provider,
-          model: meter.model,
+          model: meter.operation,
         })
         await db
           .update(schema.aiChatThread)
@@ -340,10 +341,13 @@ chatRoutes.post('/:orgId/chat/threads/:threadId/messages', requireOrg, async (c)
         )
       }
     }
+    const usage = streamRes.usage()
     c.executionCtx.waitUntil(
-      logAiUsage(c.env, {
+      logApiUsage(c.env, {
         ...meter,
         ok,
+        inputUnits: usage.inputTokens,
+        outputUnits: usage.outputTokens,
         errorCode: ok ? null : 'provider_error',
         latencyMs: Date.now() - startedAt,
       }),

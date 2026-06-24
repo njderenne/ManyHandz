@@ -83,7 +83,11 @@ function clampScore(v: unknown, fallback: number): number {
  * Run the verification. Returns a verdict, or null if the after photo couldn't be loaded — the
  * caller MUST treat null as "couldn't verify" (fall back to human review), never a silent approval.
  */
-export async function verifyPhotos(env: Env, ai: AI, input: VerifyInput): Promise<VerifyVerdict | null> {
+export async function verifyPhotos(
+  env: Env,
+  ai: AI,
+  input: VerifyInput,
+): Promise<{ verdict: VerifyVerdict; usage: { inputTokens: number; outputTokens: number } } | null> {
   const after = await mediaDataUri(env, input.orgId, input.afterMediaId)
   if (!after) return null
   const reference = input.referenceMediaId
@@ -112,13 +116,15 @@ export async function verifyPhotos(env: Env, ai: AI, input: VerifyInput): Promis
     .filter(Boolean)
     .join('\n\n')
 
-  const raw = await ai.vision(prompt, images)
+  // Verification uses the dedicated (cheaper by default) verify model, not the general vision tier.
+  const model = ai.models.verify
+  const { text: raw, usage } = await ai.vision(prompt, images, { model })
   const json = extractJson(raw)
   const decision: VerifyDecision =
     json?.decision === 'auto_approved' || json?.decision === 'auto_rejected'
       ? json.decision
       : 'flagged_for_review'
-  return {
+  const verdict: VerifyVerdict = {
     score: clampScore(json?.score, 50),
     referenceMatch: reference ? clampScore(json?.referenceMatch, 50) : null,
     reasoning:
@@ -126,7 +132,8 @@ export async function verifyPhotos(env: Env, ai: AI, input: VerifyInput): Promis
         ? json.reasoning.trim().slice(0, 600)
         : 'The reviewer could not produce a clear assessment.',
     decision,
-    provider: ai.providerFor('vision'),
-    model: ai.models.vision,
+    provider: ai.providerForModel(model),
+    model,
   }
+  return { verdict, usage }
 }
