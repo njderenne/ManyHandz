@@ -97,6 +97,8 @@ export type CompleteInput = {
   afterPhotoMediaId?: string | null
   notes?: string | null
   actualMinutes?: number | null
+  /** Signed verdict from the photo-check step, so the commit reuses the verdict the user reviewed. */
+  verificationToken?: string | null
 }
 /** The AI photo-verification verdict (when the chore had AI verification on + an after photo). */
 export type AiVerdict = {
@@ -129,6 +131,28 @@ export function useCompleteAssignment(orgId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.members(orgId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.completions(orgId, 'pending_approval') })
     },
+  })
+}
+
+/** The photo-check (preview) result: the AI verdict + a short-lived signed token to pass to /complete. */
+export type PhotoCheckResult = { verdict: AiVerdict; token: string }
+
+/** Run AI verification on the after photo WITHOUT committing — returns the verdict + a signed token. */
+export function useVerifyCompletionPhoto(orgId: string) {
+  return useMutation({
+    mutationFn: ({
+      assignmentId,
+      afterPhotoMediaId,
+      beforePhotoMediaId,
+    }: {
+      assignmentId: string
+      afterPhotoMediaId: string
+      beforePhotoMediaId?: string | null
+    }) =>
+      apiFetch<PhotoCheckResult>(`/api/organizations/${orgId}/assignments/${assignmentId}/verify-preview`, {
+        method: 'POST',
+        body: JSON.stringify({ afterPhotoMediaId, beforePhotoMediaId }),
+      }),
   })
 }
 

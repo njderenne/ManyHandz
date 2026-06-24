@@ -10,6 +10,7 @@ import { todayInTz, compareDate } from '@/lib/manyhandz/dates'
 import { awardCompletion } from '../manyhandz/completion-engine'
 import { createAI } from '../ai'
 import { verifyPhotos } from '../ai/verify-photos'
+import { signVerdict, verifyVerdictToken } from '../ai/verify-token'
 
 /**
  * Completions + approval — the centerpiece. Completing an assignment runs the CANONICAL points
@@ -29,6 +30,13 @@ const completeInput = z.object({
   afterPhotoMediaId: z.string().max(64).nullish(),
   notes: z.string().trim().max(1000).nullish(),
   actualMinutes: z.number().int().min(0).max(100000).nullish(),
+  /** Signed verdict from /verify-preview — lets the commit reuse the verdict the user already saw. */
+  verificationToken: z.string().max(8192).nullish(),
+})
+
+const previewInput = z.object({
+  afterPhotoMediaId: z.string().min(1).max(64),
+  beforePhotoMediaId: z.string().max(64).nullish(),
 })
 
 function photosOf(before?: string | null, after?: string | null): CompletionPhotos {
@@ -55,6 +63,58 @@ async function activeMultiplier(env: HouseholdEnv['Bindings'], orgId: string): P
     .limit(1)
   return ch ? Math.max(1, ch.mult / 10) : 1
 }
+
+/**
+ * Photo check (preview) — runs AI verification on the submitted after photo WITHOUT committing a
+ * completion, so the assignee sees the verdict and can fix-and-retake or send as-is. Returns the
+ * verdict plus a short-lived SIGNED token the /complete call passes back, so the commit applies the
+ * exact verdict the user saw — no second model call, and the client can't forge it.
+ */
+completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requireOrg, async (c) => {
+  const ctx = await resolveHousehold(c)
+  if (!ctx) return c.json({ error: 'forbidden' }, 403)
+  const db = getDb(c.env.DATABASE_URL)
+  const assignmentId = c.req.param('assignmentId')
+
+  const [a] = await db
+    .select({
+      id: schema.assignment.id,
+      assignedToMemberId: schema.assignment.assignedToMemberId,
+      aiVerificationEnabled: schema.chore.aiVerificationEnabled,
+      referencePhotoMediaId: schema.chore.referencePhotoMediaId,
+      choreName: schema.chore.name,
+      choreDescription: schema.chore.description,
+    })
+    .from(schema.assignment)
+    .innerJoin(schema.chore, eq(schema.chore.id, schema.assignment.choreId))
+    .where(and(eq(schema.assignment.id, assignmentId), eq(schema.assignment.organizationId, ctx.orgId)))
+    .limit(1)
+  if (!a) return c.json({ error: 'not found' }, 404)
+  if (!a.aiVerificationEnabled) return c.json({ error: 'AI verification is not enabled for this chore' }, 400)
+
+  // Same actor rule as completing: the assignee, or an admin acting on their behalf.
+  const isAssignee = a.assignedToMemberId === ctx.memberId
+  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'assignChores')) return c.json({ error: 'forbidden' }, 403)
+
+  const parsed = previewInput.safeParse(await c.req.json().catch(() => ({})))
+  if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
+
+  const verdict = await verifyPhotos(c.env, createAI(c.env), {
+    orgId: ctx.orgId,
+    task: a.choreName,
+    instructions: a.choreDescription,
+    afterMediaId: parsed.data.afterPhotoMediaId,
+    referenceMediaId: a.referencePhotoMediaId,
+  })
+  if (!verdict) return c.json({ error: "Couldn't check that photo — you can still submit it for review." }, 502)
+
+  const token = await signVerdict(c.env.BETTER_AUTH_SECRET, {
+    assignmentId: a.id,
+    afterPhotoMediaId: parsed.data.afterPhotoMediaId,
+    verdict,
+  })
+  return c.json({ verdict, token })
+})
 
 completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, async (c) => {
   const ctx = await resolveHousehold(c)
@@ -138,18 +198,32 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   //    media URLs); any failure or unloadable photo returns null → we FLAG for a human, never a
   //    silent pass. Synchronous on purpose: the client shows a "verifying…" state and the verdict.
   let aiVerdict: Awaited<ReturnType<typeof verifyPhotos>> = null
+  // reviewedByUser = the verdict came from a signed /verify-preview token, i.e. the user already SAW it
+  // and chose to submit. That consent flips an auto_rejected verdict from a hard "redo" into a
+  // "send for a human's eyes" — the user is allowed to override the AI, just not silently bypass it.
+  let reviewedByUser = false
   const aiRan = a.aiVerificationEnabled && !!d.afterPhotoMediaId
   if (aiRan) {
-    try {
-      aiVerdict = await verifyPhotos(c.env, createAI(c.env), {
-        orgId: ctx.orgId,
-        task: a.choreName,
-        instructions: a.choreDescription,
-        afterMediaId: d.afterPhotoMediaId!,
-        referenceMediaId: a.referencePhotoMediaId,
-      })
-    } catch {
-      aiVerdict = null
+    // Prefer the verdict the user already reviewed (same photo, no second model call, tamper-proof).
+    if (d.verificationToken) {
+      const payload = await verifyVerdictToken(c.env.BETTER_AUTH_SECRET, d.verificationToken)
+      if (payload && payload.assignmentId === a.id && payload.afterPhotoMediaId === d.afterPhotoMediaId) {
+        aiVerdict = payload.verdict
+        reviewedByUser = true
+      }
+    }
+    if (!aiVerdict) {
+      try {
+        aiVerdict = await verifyPhotos(c.env, createAI(c.env), {
+          orgId: ctx.orgId,
+          task: a.choreName,
+          instructions: a.choreDescription,
+          afterMediaId: d.afterPhotoMediaId!,
+          referenceMediaId: a.referencePhotoMediaId,
+        })
+      } catch {
+        aiVerdict = null
+      }
     }
   }
 
@@ -160,9 +234,9 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   const outcome: 'approved' | 'pending_approval' | 'rejected' = aiRan
     ? aiVerdict?.decision === 'auto_approved'
       ? 'approved'
-      : aiVerdict?.decision === 'auto_rejected'
-        ? 'rejected'
-        : 'pending_approval' // flagged, or verification unavailable → a human takes a look
+      : aiVerdict?.decision === 'auto_rejected' && !reviewedByUser
+        ? 'rejected' // AI said no on a raw submit (no preview) → bounce back for a redo
+        : 'pending_approval' // flagged, OR rejected-but-user-chose-to-submit-anyway, OR unavailable
     : humanNeedsApproval
       ? 'pending_approval'
       : 'approved'

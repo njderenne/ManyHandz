@@ -25,9 +25,11 @@ import {
   useAssignment,
   useUpdateAssignment,
   useCompleteAssignment,
+  useVerifyCompletionPhoto,
   type AssignmentWithChore,
   type CompleteInput,
   type AiVerdict,
+  type PhotoCheckResult,
 } from '@/lib/query/hooks/useAssignments'
 import { useComments, useAddComment } from '@/lib/query/hooks/useComments'
 import { computePoints } from '@/lib/manyhandz/points'
@@ -408,6 +410,10 @@ function CompletionSheet(props: {
   const [trackTime, setTrackTime] = useState(false)
   const [minutes, setMinutes] = useState(assignment.estimatedMinutes)
   const [mediaDisabled, setMediaDisabled] = useState(false)
+  const { orgId } = useHouseholdMode()
+  const verifyPhoto = useVerifyCompletionPhoto(orgId ?? '')
+  // The AI verdict the user is reviewing (after a photo check) but hasn't committed yet.
+  const [review, setReview] = useState<PhotoCheckResult | null>(null)
 
   // The "before" was captured at start (on the assignment); here the assignee adds the "after".
   const photoCount = (assignment.beforePhotoMediaId ? 1 : 0) + (after.mediaId ? 1 : 0)
@@ -450,12 +456,13 @@ function CompletionSheet(props: {
 
   const uploading = after.uploading
 
-  const onSubmit = () => {
+  const onSubmit = (verificationToken?: string | null) => {
     const input: CompleteInput = {
       beforePhotoMediaId: assignment.beforePhotoMediaId,
       afterPhotoMediaId: after.mediaId,
       notes: notes.trim() || null,
       actualMinutes: trackTime && features.speedBonus ? minutes : null,
+      verificationToken: verificationToken ?? null,
     }
     props.complete.mutate(
       { assignmentId: assignment.id, input },
@@ -468,6 +475,27 @@ function CompletionSheet(props: {
         onError: (e) => props.toast({ title: "Couldn't complete", description: (e as Error).message, variant: 'error' }),
       },
     )
+  }
+
+  // AI-verification chores: check the after photo FIRST (no commit) so the user sees the verdict and
+  // decides to fix-and-retake or send as-is. If the check itself errors, just submit it for review.
+  const onCheck = () => {
+    if (!after.mediaId) return
+    verifyPhoto.mutate(
+      { assignmentId: assignment.id, afterPhotoMediaId: after.mediaId, beforePhotoMediaId: assignment.beforePhotoMediaId },
+      {
+        onSuccess: (res) => setReview(res),
+        onError: () => {
+          props.toast({ title: "Couldn't check the photo", description: 'Submitting it for review instead.', variant: 'default' })
+          onSubmit()
+        },
+      },
+    )
+  }
+
+  const onRetake = () => {
+    setReview(null)
+    setAfter(EMPTY_SLOT)
   }
 
   return (
@@ -530,16 +558,90 @@ function CompletionSheet(props: {
           </View>
         ) : null}
 
-        <Button
-          icon={Send}
-          label="Complete chore"
-          loading={props.complete.isPending}
-          disabled={uploading || props.complete.isPending}
-          onPress={onSubmit}
-        />
+        {review ? (
+          // The user has an AI verdict in hand — show it + the fix-or-send choice (nothing committed yet).
+          <ReviewPanel
+            review={review}
+            colors={colors}
+            busy={props.complete.isPending}
+            onRetake={onRetake}
+            onSubmit={() => onSubmit(review.token)}
+          />
+        ) : assignment.aiVerificationEnabled && after.mediaId ? (
+          // AI chore + an after photo → check it before committing.
+          <Button
+            icon={Sparkles}
+            label="Check & complete"
+            loading={verifyPhoto.isPending}
+            disabled={uploading || verifyPhoto.isPending}
+            onPress={onCheck}
+          />
+        ) : (
+          <Button
+            icon={Send}
+            label="Complete chore"
+            loading={props.complete.isPending}
+            disabled={uploading || props.complete.isPending}
+            onPress={() => onSubmit()}
+          />
+        )}
         {uploading ? <Text variant="caption" className="text-center">Uploading photo…</Text> : null}
       </View>
     </SheetModal>
+  )
+}
+
+/**
+ * In-sheet verdict panel — the heart of the "check before you commit" flow. After the photo check it
+ * shows the AI's read (score + reasoning) and the user's choice: a clean pass just finishes; otherwise
+ * "fix it & retake" (redo the photo) or "send for approval anyway" (override → a human reviews). The
+ * token rides the submit so the server applies this exact verdict.
+ */
+function ReviewPanel({
+  review,
+  colors,
+  busy,
+  onRetake,
+  onSubmit,
+}: {
+  review: PhotoCheckResult
+  colors: ReturnType<typeof useColors>
+  busy: boolean
+  onRetake: () => void
+  onSubmit: () => void
+}) {
+  const v = review.verdict
+  const approved = v.decision === 'auto_approved'
+  const rejected = v.decision === 'auto_rejected'
+  const tint = approved ? colors.success : rejected ? colors.destructive : colors.warning
+  const heading = approved
+    ? 'Looks done!'
+    : rejected
+      ? "This doesn't look finished"
+      : 'Almost — this will need approval'
+  return (
+    <View className="gap-3">
+      <View className="gap-1.5 rounded-xl border p-3" style={{ borderColor: `${tint}55`, backgroundColor: `${tint}11` }}>
+        <View className="flex-row items-center gap-1.5">
+          <Sparkles color={tint} size={16} />
+          <Text variant="label" style={{ color: tint }}>
+            {heading}
+          </Text>
+        </View>
+        <Text variant="caption" className="font-semibold text-foreground">
+          {v.score}% sure{v.referenceMatch != null ? ` · ${v.referenceMatch}% match to goal` : ''}
+        </Text>
+        <Text variant="caption">{v.reasoning}</Text>
+      </View>
+      {approved ? (
+        <Button icon={Send} label="Finish" loading={busy} onPress={onSubmit} />
+      ) : (
+        <View className="gap-2">
+          <Button label="Send for approval anyway" loading={busy} onPress={onSubmit} />
+          <Button variant="outline" label="Fix it & retake photo" disabled={busy} onPress={onRetake} />
+        </View>
+      )}
+    </View>
   )
 }
 
