@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { requireSession, requireOrg, type AuthEnv } from '../middleware/org'
 import { requireTier } from '../entitlements'
 import { createAI } from '../ai'
+import { verifyPhotos } from '../ai/verify-photos'
 import { logApiUsage } from '../usage/log'
 
 /**
@@ -221,4 +222,46 @@ aiRoutes.post('/image', requireOrg, async (c) => {
   // Generation is billed per image, not per token → log one image unit.
   c.executionCtx.waitUntil(logApiUsage(c.env, { ...meter, ok: true, inputUnits: 1, latencyMs: Date.now() - startedAt }))
   return c.json({ url })
+})
+
+/**
+ * Photo verification — the reusable "does this photo show the task done?" endpoint. Takes org-scoped
+ * media ids (the Worker reads the bytes from R2; the model can't fetch our auth-gated URLs), runs the
+ * cheaper-by-default verify model, returns a structured verdict, and meters the call as 'ai.verify'.
+ * Apps that gate approval/points on the result wire verifyPhotos() into their own flow instead (see
+ * ManyHandz completions.ts) — this is the no-wiring option.
+ *
+ *   POST /api/ai/verify  { afterMediaId, referenceMediaId?, task, instructions? } → { verdict }
+ */
+aiRoutes.post('/verify', requireOrg, async (c) => {
+  const orgId = c.get('orgId')
+  const session = c.get('session')
+  const { afterMediaId, referenceMediaId, task, instructions } = await c.req.json<{
+    afterMediaId?: string
+    referenceMediaId?: string | null
+    task?: string
+    instructions?: string | null
+  }>()
+  if (!afterMediaId || !task) return c.json({ error: 'afterMediaId and task are required' }, 400)
+
+  const ai = createAI(c.env)
+  const startedAt = Date.now()
+  const result = await verifyPhotos(c.env, ai, { orgId, task, instructions, afterMediaId, referenceMediaId })
+  if (!result) return c.json({ error: "Couldn't read that photo." }, 502)
+
+  c.executionCtx.waitUntil(
+    logApiUsage(c.env, {
+      organizationId: orgId,
+      userId: session.user.id,
+      provider: result.verdict.provider,
+      feature: 'ai.verify',
+      operation: result.verdict.model,
+      inputUnits: result.usage.inputTokens,
+      outputUnits: result.usage.outputTokens,
+      unitKind: 'tokens',
+      ok: true,
+      latencyMs: Date.now() - startedAt,
+    }),
+  )
+  return c.json({ verdict: result.verdict })
 })
