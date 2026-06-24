@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { View } from 'react-native'
 import { Stack } from 'expo-router'
-import { CheckCircle2, ShieldCheck, Lock } from 'lucide-react-native'
+import { CheckCircle2, ShieldCheck, Lock, Sparkles } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,20 @@ function timeAgo(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`
   const days = Math.round(hrs / 24)
   return `${days}d ago`
+}
+
+/** Map an AI verdict decision to its tint + a short label for the approver. */
+function aiVerdictMeta(decision: PendingCompletion['aiDecision'], colors: ReturnType<typeof useColors>) {
+  switch (decision) {
+    case 'auto_approved':
+      return { tint: colors.success, label: 'AI: looks done' }
+    case 'auto_rejected':
+      return { tint: colors.destructive, label: 'AI: looks unfinished' }
+    case 'flagged_for_review':
+      return { tint: colors.warning, label: 'AI: needs a look' }
+    default:
+      return null
+  }
 }
 
 /** A single photo slot in the 3-up row: label on top, the auth-fetched image or a "no photo" tile. */
@@ -122,6 +136,24 @@ function CompletionCard({
           <PhotoSlot label="Before" mediaId={item.beforePhotoMediaId} />
           <PhotoSlot label="After" mediaId={item.afterPhotoMediaId} />
         </View>
+
+        {/* AI verdict — score + the model's reasoning, so a flagged completion is never a black box. */}
+        {(() => {
+          const v = aiVerdictMeta(item.aiDecision, colors)
+          if (!v) return null
+          return (
+            <View className="gap-1.5 rounded-xl border border-border bg-background p-3">
+              <View className="flex-row items-center gap-1.5">
+                <Sparkles color={v.tint} size={14} />
+                <Text variant="caption" className="font-semibold text-foreground">
+                  {v.label} · {item.aiScore}% sure
+                  {item.aiReferenceMatch != null ? ` · ${item.aiReferenceMatch}% match to goal` : ''}
+                </Text>
+              </View>
+              {item.aiReasoning ? <Text variant="caption">{item.aiReasoning}</Text> : null}
+            </View>
+          )
+        })()}
 
         {canAct ? (
           <View className="flex-row gap-2">

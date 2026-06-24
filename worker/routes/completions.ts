@@ -249,11 +249,18 @@ completionRoutes.get('/:orgId/completions', requireOrg, async (c) => {
       choreIcon: schema.chore.icon,
       referencePhotoMediaId: schema.chore.referencePhotoMediaId,
       memberName: schema.member.displayName,
+      // The AI verdict (when this completion was flagged by AI verification) — so the approver sees
+      // the score + WHY it was flagged instead of a black-box "needs review".
+      aiDecision: schema.aiVerification.decision,
+      aiScore: schema.aiVerification.confidenceScore,
+      aiReferenceMatch: schema.aiVerification.referenceMatchScore,
+      aiReasoning: schema.aiVerification.reasoning,
     })
     .from(schema.completion)
     .innerJoin(schema.assignment, eq(schema.assignment.id, schema.completion.assignmentId))
     .innerJoin(schema.chore, eq(schema.chore.id, schema.assignment.choreId))
     .leftJoin(schema.member, eq(schema.member.id, schema.completion.completedByMemberId))
+    .leftJoin(schema.aiVerification, eq(schema.aiVerification.completionId, schema.completion.id))
     .where(and(eq(schema.completion.organizationId, orgId), eq(schema.completion.status, status)))
     .orderBy(asc(schema.completion.createdAt))
     .limit(200)

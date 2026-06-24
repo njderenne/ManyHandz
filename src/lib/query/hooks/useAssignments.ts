@@ -146,6 +146,11 @@ export type PendingCompletion = {
   choreIcon: string
   referencePhotoMediaId: string | null
   memberName: string | null
+  /** The AI verdict, when this completion was flagged by AI verification (null otherwise). */
+  aiDecision: 'auto_approved' | 'flagged_for_review' | 'auto_rejected' | null
+  aiScore: number | null
+  aiReferenceMatch: number | null
+  aiReasoning: string | null
 }
 
 /** The parent approval queue (family). */
