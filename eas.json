@@ -9,18 +9,21 @@
       "distribution": "internal",
       "channel": "development",
       "autoIncrement": true,
-      "credentialsSource": "local"
+      "credentialsSource": "local",
+      "env": { "EXPO_PUBLIC_API_URL": "https://manyhandz.io" }
     },
     "preview": {
       "distribution": "internal",
       "channel": "preview",
       "autoIncrement": true,
-      "ios": { "credentialsSource": "local" }
+      "ios": { "credentialsSource": "local" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://manyhandz.io" }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "ios": { "credentialsSource": "local" }
+      "ios": { "credentialsSource": "local" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://manyhandz.io" }
     }
   },
   "submit": {
