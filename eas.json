@@ -17,12 +17,14 @@
       "channel": "preview",
       "autoIncrement": true,
       "ios": { "credentialsSource": "local" },
+      "android": { "credentialsSource": "local" },
       "env": { "EXPO_PUBLIC_API_URL": "https://manyhandz.io" }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
       "ios": { "credentialsSource": "local" },
+      "android": { "credentialsSource": "local" },
       "env": { "EXPO_PUBLIC_API_URL": "https://manyhandz.io" }
     }
   },
