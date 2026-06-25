@@ -6,6 +6,9 @@ Closed → Production once the policy items below are settled.
 
 > Generated 2026-06-24 from the actual codebase. Items marked **🔸 DECISION** need a human call.
 
+**Google Play developer ID:** `9183192289764576160` (account **in approval** as of 2026-06-24 — no
+app record / publishing until Google clears it).
+
 ---
 
 ## 0. Who does what
@@ -147,8 +150,9 @@ Many hands make light work. Get the whole house on the same page — fairly.
 5. **Chore detail + photo proof** — "Done means done — AI-verified" (the photo-verify flow)
 6. **Chores list** — "Every chore, effort-weighted"
 
-Also needed for the listing: **512×512 app icon** (have it) and a **1024×500 feature graphic**
-(Claude can generate from the brand). Not required for Internal testing.
+Also needed for the listing: **512×512 app icon** (have it) and a **1024×500 feature graphic** —
+✅ generated at `assets/play/feature-graphic.png` (brand-styled placeholder; swap for a designed one
+if desired). Neither is required for Internal testing.
 
 ---
 
