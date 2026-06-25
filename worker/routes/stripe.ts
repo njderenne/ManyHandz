@@ -28,11 +28,38 @@ const STATUS: Record<string, 'trialing' | 'active' | 'past_due' | 'canceled' | '
   unpaid: 'unpaid',
 }
 
-/** Map a Stripe price → our subscription tier (configured via env price IDs). */
-function tierForPrice(env: Env, priceId?: string) {
-  if (priceId && priceId === env.STRIPE_PRICE_PREMIUM) return 'PREMIUM' as const
-  if (priceId && priceId === env.STRIPE_PRICE_STANDARD) return 'STANDARD' as const
+/**
+ * Map a Stripe price → our subscription tier. Product-centric: any price on a tier's PRODUCT
+ * (STRIPE_PRODUCT_<TIER>) resolves to that tier — so a tier can sell many frequencies (weekly /
+ * monthly / quarterly = month×3 / semi = month×6 / yearly), each a separate price on the same
+ * product. Falls back to the legacy price-id env (STRIPE_PRICE_<TIER>[_YEARLY]).
+ */
+function tierForPrice(env: Env, price?: Stripe.Price) {
+  const e = env as unknown as Record<string, string | undefined>
+  const productId = typeof price?.product === 'string' ? price.product : (price?.product as Stripe.Product | undefined)?.id
+  if (productId && productId === e.STRIPE_PRODUCT_PREMIUM) return 'PREMIUM' as const
+  if (productId && productId === e.STRIPE_PRODUCT_STANDARD) return 'STANDARD' as const
+  const id = price?.id
+  if (id && (id === e.STRIPE_PRICE_PREMIUM || id === e.STRIPE_PRICE_PREMIUM_YEARLY)) return 'PREMIUM' as const
+  if (id && (id === e.STRIPE_PRICE_STANDARD || id === e.STRIPE_PRICE_STANDARD_YEARLY)) return 'STANDARD' as const
   return 'FREE' as const
+}
+
+// Is this price one we sell? True if it belongs to a tier PRODUCT (any frequency) or matches a
+// legacy tier price id. Validates checkout input before it reaches Stripe.
+async function isSellablePrice(stripe: Stripe, env: Env, priceId: string): Promise<boolean> {
+  const e = env as unknown as Record<string, string | undefined>
+  const legacy = [e.STRIPE_PRICE_STANDARD, e.STRIPE_PRICE_PREMIUM, e.STRIPE_PRICE_STANDARD_YEARLY, e.STRIPE_PRICE_PREMIUM_YEARLY]
+  if (legacy.includes(priceId)) return true
+  const products = [e.STRIPE_PRODUCT_STANDARD, e.STRIPE_PRODUCT_PREMIUM].filter(Boolean) as string[]
+  if (!products.length) return false
+  try {
+    const p = await stripe.prices.retrieve(priceId)
+    const productId = typeof p.product === 'string' ? p.product : p.product?.id
+    return !!p.active && !!productId && products.includes(productId)
+  } catch {
+    return false
+  }
 }
 
 /** current_period_end lives on the subscription item in Stripe's current API. */
@@ -48,15 +75,12 @@ stripeRoutes.post('/checkout', requireOrg, requireRole('owner', 'admin'), async 
 
   const { priceId } = await c.req.json<{ priceId?: string }>()
   if (!priceId) return c.json({ error: 'priceId is required' }, 400)
-  // Only the two prices we sell — anything else (a stale id, another account's price) never
-  // reaches Stripe, where the failure mode would be a confusing checkout error.
-  if (priceId !== c.env.STRIPE_PRICE_STANDARD && priceId !== c.env.STRIPE_PRICE_PREMIUM) {
-    // Loud log: if the worker-side price vars are unset/drifted from the client's
-    // EXPO_PUBLIC_STRIPE_PRICE_*, EVERY checkout 400s — make that diagnosable.
-    console.warn('checkout rejected: unknown priceId', {
-      standardSet: Boolean(c.env.STRIPE_PRICE_STANDARD),
-      premiumSet: Boolean(c.env.STRIPE_PRICE_PREMIUM),
-    })
+
+  const stripe = client(c.env)
+  // Accept any price on one of our tier products (any frequency) or a legacy tier price id.
+  // Anything else (stale id, another account's price) is rejected before it reaches Stripe.
+  if (!(await isSellablePrice(stripe, c.env, priceId))) {
+    console.warn('checkout rejected: price not in a sellable tier', { priceId })
     return c.json({ error: 'unknown priceId' }, 400)
   }
 
@@ -67,8 +91,6 @@ stripeRoutes.post('/checkout', requireOrg, requireRole('owner', 'admin'), async 
     .where(eq(schema.organization.id, orgId))
     .limit(1)
   if (!org) return c.json({ error: 'organization not found' }, 404)
-
-  const stripe = client(c.env)
 
   // Ensure the org has a Stripe customer (created once, stored on the org).
   let customerId = org.stripeCustomerId
@@ -154,7 +176,7 @@ stripeRoutes.post('/webhook', async (c) => {
     const values = {
       stripeSubscriptionId: sub.id,
       subscriptionStatus: STATUS[sub.status] ?? null,
-      subscriptionTier: tierForPrice(c.env, sub.items.data[0]?.price.id),
+      subscriptionTier: tierForPrice(c.env, sub.items.data[0]?.price),
       currentPeriodEnd: periodEnd(sub),
     }
     const orgId = sub.metadata?.organizationId

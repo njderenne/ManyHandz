@@ -127,31 +127,61 @@ async function resolvePrice(
   }
 }
 
-async function buildTier(
-  stripe: Stripe | null,
-  tier: 'STANDARD' | 'PREMIUM',
-  priceIds: Array<string | undefined>,
-): Promise<PlanTier> {
-  const ids = priceIds.filter((x): x is string => !!x)
-  if (!ids.length) {
-    return { tier, priceId: null, unitAmount: null, currency: null, interval: null, intervalCount: null, label: null, features: [], productName: null, prices: [] }
-  }
-  const resolved = await Promise.all(ids.map((id) => resolvePrice(stripe, id)))
-  const prices = resolved.map((r) => r.price)
-  const product = resolved.find((r) => r.product)?.product ?? null
+const emptyTier = (tier: 'STANDARD' | 'PREMIUM'): PlanTier => ({
+  tier, priceId: null, unitAmount: null, currency: null, interval: null, intervalCount: null, label: null, features: [], productName: null, prices: [],
+})
+
+function tierFromPrices(tier: 'STANDARD' | 'PREMIUM', prices: PlanPrice[], product: Stripe.Product | null): PlanTier {
   const primary = prices[0]
   return {
     tier,
-    priceId: primary.priceId,
-    unitAmount: primary.unitAmount,
-    currency: primary.currency,
-    interval: primary.interval,
-    intervalCount: primary.intervalCount,
+    priceId: primary?.priceId ?? null,
+    unitAmount: primary?.unitAmount ?? null,
+    currency: primary?.currency ?? null,
+    interval: primary?.interval ?? null,
+    intervalCount: primary?.intervalCount ?? null,
     label: product?.metadata?.label ?? null,
     features: parseFeatures(product?.metadata?.features),
     productName: product?.name ?? null,
     prices,
   }
+}
+
+async function buildTier(
+  stripe: Stripe | null,
+  tier: 'STANDARD' | 'PREMIUM',
+  productId: string | undefined,
+  fallbackPriceIds: Array<string | undefined>,
+): Promise<PlanTier> {
+  // Product-centric: every active recurring price on the tier's product is a frequency
+  // (weekly / monthly / quarterly = month×3 / semi = month×6 / yearly).
+  if (stripe && productId) {
+    try {
+      const list = await stripe.prices.list({ product: productId, active: true, limit: 100, expand: ['data.product'] })
+      const recurring = list.data.filter((p) => p.recurring)
+      if (recurring.length) {
+        const prices: PlanPrice[] = recurring
+          .map((p) => ({
+            priceId: p.id,
+            unitAmount: p.unit_amount ?? null,
+            currency: p.currency ?? null,
+            interval: (p.recurring?.interval as Interval | undefined) ?? null,
+            intervalCount: p.recurring?.interval_count ?? null,
+          }))
+          .sort((a, b) => (a.unitAmount ?? 0) - (b.unitAmount ?? 0)) // cheapest first
+        const prod = recurring[0].product
+        const product = prod && typeof prod === 'object' && !('deleted' in prod) ? (prod as Stripe.Product) : null
+        return tierFromPrices(tier, prices, product)
+      }
+    } catch {
+      /* fall through to the legacy price-id env */
+    }
+  }
+  // Legacy fallback: explicit price-id env vars (STRIPE_PRICE_<TIER>[_YEARLY]).
+  const ids = fallbackPriceIds.filter((x): x is string => !!x)
+  if (!ids.length) return emptyTier(tier)
+  const resolved = await Promise.all(ids.map((id) => resolvePrice(stripe, id)))
+  return tierFromPrices(tier, resolved.map((r) => r.price), resolved.find((r) => r.product)?.product ?? null)
 }
 
 billingRoutes.get('/plans', async (c) => {
@@ -177,8 +207,8 @@ billingRoutes.get('/plans', async (c) => {
     prices: [],
   }
   const [standard, premium] = await Promise.all([
-    buildTier(stripe, 'STANDARD', [raw.STRIPE_PRICE_STANDARD, raw.STRIPE_PRICE_STANDARD_YEARLY]),
-    buildTier(stripe, 'PREMIUM', [raw.STRIPE_PRICE_PREMIUM, raw.STRIPE_PRICE_PREMIUM_YEARLY]),
+    buildTier(stripe, 'STANDARD', raw.STRIPE_PRODUCT_STANDARD, [raw.STRIPE_PRICE_STANDARD, raw.STRIPE_PRICE_STANDARD_YEARLY]),
+    buildTier(stripe, 'PREMIUM', raw.STRIPE_PRODUCT_PREMIUM, [raw.STRIPE_PRICE_PREMIUM, raw.STRIPE_PRICE_PREMIUM_YEARLY]),
   ])
 
   const data: PlansResponse = {
