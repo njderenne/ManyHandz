@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View } from 'react-native'
+import { View, Pressable } from 'react-native'
 import { Stack } from 'expo-router'
 import { BadgeCheck, Check } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
@@ -11,7 +11,16 @@ import { TierGate } from '@/components/ui/tier-gate'
 import { useToast } from '@/components/ui/toast'
 import { useColors } from '@/lib/config/theme'
 import { startCheckout, openBillingPortal } from '@/lib/billing'
-import { useSubscription, TIER_ORDER, type Tier } from '@/lib/billing/useSubscription'
+import {
+  useSubscription,
+  usePlans,
+  formatPlanPrice,
+  formatPriceAmount,
+  frequencyLabel,
+  TIER_ORDER,
+  type Tier,
+  type PlanPrice,
+} from '@/lib/billing/useSubscription'
 import { ApiError } from '@/lib/api/client'
 import { useSession } from '@/lib/auth/client'
 import { APP_CONFIG } from '@/lib/config/app'
@@ -26,17 +35,18 @@ import { t } from '@/lib/i18n'
  */
 
 /**
- * Per-app paywall copy — the factory rewrites these when minting. PRICES are display-only
- * placeholders; the real price lives in the Stripe dashboard products behind the price IDs.
- * FEATURES are marketing copy, not enforcement — enforcement is TierGate + the Worker's checks.
+ * FALLBACK paywall copy. The live source is GET /api/billing/plans (usePlans below) — composed
+ * from Stripe + product metadata and managed centrally by the studio admin (Criterial). These
+ * consts only render when that fetch hasn't resolved or a tier's price can't be read, so the
+ * paywall is never blank. FEATURES are marketing copy, not enforcement (that's TierGate + Worker).
  */
-const PRICES: Record<Tier, string> = {
+const FALLBACK_PRICES: Record<Tier, string> = {
   FREE: '$0',
   STANDARD: '$6.99 / month',
   PREMIUM: '$14.99 / month',
 }
 
-const FEATURES: Record<Tier, string[]> = {
+const FALLBACK_FEATURES: Record<Tier, string[]> = {
   FREE: ['Everything you need to get started', `One ${APP_CONFIG.tenant.singular.toLowerCase()}`],
   STANDARD: [
     `Everything in ${APP_CONFIG.monetization.tiers.FREE.label}`,
@@ -51,12 +61,11 @@ const FEATURES: Record<Tier, string[]> = {
 }
 
 /**
- * Stripe price IDs per paid tier. Client-readable env vars must be EXPO_PUBLIC_-prefixed
- * (inlined into the bundle — see .env.example); set them to the SAME price IDs the Worker
- * holds as STRIPE_PRICE_STANDARD / STRIPE_PRICE_PREMIUM, since that mapping is how the
- * webhook resolves a Stripe price back to a tier.
+ * Fallback Stripe price IDs (EXPO_PUBLIC_, inlined at build) — used only if /api/billing/plans
+ * can't be reached. Normally the price id comes live from that endpoint, so pricing changes need
+ * no rebuild. Keep these set to the SAME ids the Worker holds as STRIPE_PRICE_STANDARD/PREMIUM.
  */
-const PRICE_IDS: Partial<Record<Tier, string>> = {
+const FALLBACK_PRICE_IDS: Partial<Record<Tier, string>> = {
   STANDARD: process.env.EXPO_PUBLIC_STRIPE_PRICE_STANDARD,
   PREMIUM: process.env.EXPO_PUBLIC_STRIPE_PRICE_PREMIUM,
 }
@@ -66,17 +75,38 @@ export default function PaywallScreen() {
   const colors = useColors()
   const { data: session } = useSession()
   const { data: summary, refetch } = useSubscription()
+  const { data: plans } = usePlans()
   const [buying, setBuying] = useState<Tier | null>(null)
   const [managing, setManaging] = useState(false)
+  // The billing frequency the user picked per tier (priceId). Defaults to the tier's primary.
+  const [selectedPrice, setSelectedPrice] = useState<Partial<Record<Tier, string>>>({})
 
   const currentTier: Tier = summary?.tier ?? 'FREE'
+
+  // Per-tier view: live plans (GET /api/billing/plans) layered over the baked fallbacks, with the
+  // user-selected billing frequency. Always renders even if the plans fetch is pending.
+  const view = (tier: Tier) => {
+    const plan = plans?.tiers.find((p) => p.tier === tier)
+    const prices: PlanPrice[] = plan?.prices ?? []
+    const selectedId = selectedPrice[tier] ?? plan?.priceId ?? prices[0]?.priceId ?? null
+    const selected = prices.find((p) => p.priceId === selectedId) ?? null
+    const amount = selected ? formatPriceAmount(selected) : plan ? formatPlanPrice(plan) : null
+    return {
+      label: plan?.label ?? APP_CONFIG.monetization.tiers[tier].label,
+      amount: amount ?? FALLBACK_PRICES[tier],
+      frequency: selected ? frequencyLabel(selected) : null,
+      features: plan && plan.features.length ? plan.features : FALLBACK_FEATURES[tier],
+      priceId: selectedId ?? FALLBACK_PRICE_IDS[tier],
+      prices,
+    }
+  }
 
   const upgrade = async (tier: Tier) => {
     if (!session) {
       toast({ title: t('paywall.signInToSubscribe'), variant: 'error' })
       return
     }
-    const priceId = PRICE_IDS[tier]
+    const priceId = view(tier).priceId
     if (!priceId) {
       toast({
         title: t('paywall.billingNotConfigured'),
@@ -148,21 +178,40 @@ export default function PaywallScreen() {
         {TIER_ORDER.map((tier) => {
           const isCurrent = tier === currentTier
           const isPaid = tier !== 'FREE'
-          // Don't render a paid tier with no configured Stripe price — a minted app may sell fewer
-          // tiers than the FREE→STANDARD→PREMIUM ladder, and a dead "Get" button (undefined price →
-          // "billing not configured" toast) is worse than no card. Same gating class as the social
-          // buttons; pairs with the readiness doctor's "require ≥1 paid price" check.
-          if (isPaid && !PRICE_IDS[tier]) return null
+          const v = view(tier)
+          // Hide a paid tier with no price (a half-configured / unsold tier).
+          if (isPaid && !v.priceId) return null
           return (
             <Card key={tier} className={isCurrent ? 'border-primary' : undefined}>
               <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>{APP_CONFIG.monetization.tiers[tier].label}</CardTitle>
+                <CardTitle>{v.label}</CardTitle>
                 {isCurrent ? <Badge variant="secondary" label={t('paywall.currentPlan')} /> : null}
               </CardHeader>
               <CardContent className="gap-3">
-                <Text variant="h2">{PRICES[tier]}</Text>
+                <View className="gap-0.5">
+                  <Text variant="h2">{v.amount}</Text>
+                  {v.frequency ? <Text variant="caption">{v.frequency}</Text> : null}
+                </View>
+                {isPaid && v.prices.length > 1 ? (
+                  <View className="flex-row flex-wrap gap-2">
+                    {v.prices.map((p) => {
+                      const on = p.priceId === v.priceId
+                      return (
+                        <Pressable
+                          key={p.priceId}
+                          onPress={() => setSelectedPrice((s) => ({ ...s, [tier]: p.priceId }))}
+                          className={`rounded-full border px-3 py-1.5 ${on ? 'border-primary bg-primary/10' : 'border-border'}`}
+                        >
+                          <Text variant="label" className={on ? 'text-primary' : 'text-muted-foreground'}>
+                            {frequencyLabel(p)}
+                          </Text>
+                        </Pressable>
+                      )
+                    })}
+                  </View>
+                ) : null}
                 <View className="gap-1.5">
-                  {FEATURES[tier].map((feature) => (
+                  {v.features.map((feature) => (
                     <View key={feature} className="flex-row items-center gap-2">
                       <Check color={colors.success} size={16} />
                       <Text variant="body" className="flex-1">
@@ -173,7 +222,7 @@ export default function PaywallScreen() {
                 </View>
                 {isPaid && !isCurrent ? (
                   <Button
-                    label={t('paywall.getPlan', { plan: APP_CONFIG.monetization.tiers[tier].label })}
+                    label={t('paywall.getPlan', { plan: v.label })}
                     loading={buying === tier}
                     disabled={buying !== null}
                     onPress={() => upgrade(tier)}

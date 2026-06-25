@@ -45,3 +45,87 @@ export function useHasTier(min: Tier): boolean {
   const { data } = useSubscription()
   return isAtLeast(data?.tier ?? 'FREE', min)
 }
+
+/**
+ * Shape of GET /api/billing/plans — the dynamic pricing source. Composed server-side from the
+ * Stripe price (amount/interval) + product metadata (label/features), so the paywall renders
+ * live pricing the studio admin (Criterial) manages, with no app rebuild. `null` fields mean the
+ * tier's price isn't readable (Stripe unset/unreachable) — callers fall back to baked defaults.
+ */
+export interface PlanPrice {
+  priceId: string
+  unitAmount: number | null
+  currency: string | null
+  interval: 'day' | 'week' | 'month' | 'year' | null
+  intervalCount: number | null
+}
+export interface PlanTier {
+  tier: Tier
+  priceId: string | null
+  unitAmount: number | null
+  currency: string | null
+  interval: 'day' | 'week' | 'month' | 'year' | null
+  intervalCount: number | null
+  label: string | null
+  features: string[]
+  productName: string | null
+  /** All prices for this tier (each a billing frequency). */
+  prices?: PlanPrice[]
+}
+export interface Plans {
+  tiers: PlanTier[]
+}
+
+/** Human label for a billing frequency, e.g. "Weekly", "Quarterly", "Yearly". */
+export function frequencyLabel(p: Pick<PlanPrice, 'interval' | 'intervalCount'>): string {
+  if (!p.interval) return 'One-time'
+  const n = p.intervalCount ?? 1
+  const map: Record<string, string> = {
+    'week:1': 'Weekly',
+    'month:1': 'Monthly',
+    'month:3': 'Quarterly',
+    'month:6': 'Semi-annual',
+    'year:1': 'Yearly',
+    'day:1': 'Daily',
+  }
+  return map[`${p.interval}:${n}`] ?? (n > 1 ? `Every ${n} ${p.interval}s` : `Per ${p.interval}`)
+}
+
+/** Just the amount, e.g. "$6.99" — null if unknown. */
+export function formatPriceAmount(p: Pick<PlanPrice, 'unitAmount' | 'currency'>): string | null {
+  if (p.unitAmount == null || !p.currency) return null
+  try {
+    return (p.unitAmount / 100).toLocaleString(undefined, { style: 'currency', currency: p.currency.toUpperCase() })
+  } catch {
+    return `${(p.unitAmount / 100).toFixed(2)} ${p.currency.toUpperCase()}`
+  }
+}
+
+/** Live pricing for the paywall. Not org-scoped; safe to fetch before sign-in. */
+export function usePlans() {
+  return useQuery({
+    queryKey: ['billing', 'plans'],
+    queryFn: () => apiFetch<Plans>('/api/billing/plans'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** Format a plan's price for display, e.g. "$6.99 / month" — null if the amount isn't known. */
+export function formatPlanPrice(plan: PlanTier): string | null {
+  if (plan.unitAmount == null || !plan.currency) return null
+  let amount: string
+  try {
+    amount = (plan.unitAmount / 100).toLocaleString(undefined, {
+      style: 'currency',
+      currency: plan.currency.toUpperCase(),
+    })
+  } catch {
+    amount = `${(plan.unitAmount / 100).toFixed(2)} ${plan.currency.toUpperCase()}`
+  }
+  if (!plan.interval) return amount
+  const every =
+    plan.intervalCount && plan.intervalCount > 1
+      ? `${plan.intervalCount} ${plan.interval}s`
+      : plan.interval
+  return `${amount} / ${every}`
+}
