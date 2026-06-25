@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import Stripe from 'stripe'
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
+import { APP_CONFIG } from '@/lib/config/app'
 import { requireOrg, type AuthEnv } from '../middleware/org'
-import type { Env } from '../env'
 
 /**
  * Billing — the READ side of subscriptions, separate from routes/stripe.ts (which owns the
@@ -41,13 +41,23 @@ billingRoutes.get('/summary', requireOrg, async (c) => {
   return c.json(org)
 })
 
-// --- Plans (public) — the dynamic pricing source for the paywall ---
+// --- Plans (public) — the dynamic pricing source for the paywall + Criterial admin ---
 
 type Interval = 'day' | 'week' | 'month' | 'year'
+
+// One Stripe price for a tier. A tier can have more than one (e.g. monthly + yearly).
+export interface PlanPrice {
+  priceId: string
+  unitAmount: number | null // null = id set but unresolvable (placeholder/archived/wrong-mode)
+  currency: string | null
+  interval: Interval | null
+  intervalCount: number | null
+}
+
 export interface PlanTier {
   tier: 'FREE' | 'STANDARD' | 'PREMIUM'
+  /** Primary price (first/monthly) — kept for the existing paywall contract. */
   priceId: string | null
-  /** Smallest currency unit (cents); 0 for FREE, null if the price can't be read. */
   unitAmount: number | null
   currency: string | null
   interval: Interval | null
@@ -56,11 +66,21 @@ export interface PlanTier {
   label: string | null
   features: string[]
   productName: string | null
+  /** ALL prices for this tier (monthly + any yearly), in env order. */
+  prices: PlanPrice[]
+}
+
+export interface PlansResponse {
+  /** The Worker's Stripe mode (from STRIPE_SECRET_KEY) — never the key. */
+  mode: 'live' | 'test' | null
+  /** From APP_CONFIG.subscription — trial/grace live in app config, not Stripe. */
+  subscription: { trialDays: number | null; gracePeriodDays: number | null }
+  tiers: PlanTier[]
 }
 
 // Per-isolate cache: plans change rarely, so collapse the Stripe round-trips. A Criterial
 // price change reflects within the TTL (or immediately on a fresh isolate).
-let plansCache: { at: number; data: { tiers: PlanTier[] } } | null = null
+let plansCache: { at: number; data: PlansResponse } | null = null
 const PLANS_TTL_MS = 60_000
 
 // Product.metadata.features is a flat string — accept a JSON array or newline/`|`-separated list.
@@ -81,43 +101,56 @@ function parseFeatures(raw?: string | null): string[] {
     .filter(Boolean)
 }
 
+async function resolvePrice(
+  stripe: Stripe | null,
+  priceId: string,
+): Promise<{ price: PlanPrice; product: Stripe.Product | null }> {
+  const base: PlanPrice = { priceId, unitAmount: null, currency: null, interval: null, intervalCount: null }
+  if (!stripe) return { price: base, product: null }
+  try {
+    const p = await stripe.prices.retrieve(priceId, { expand: ['product'] })
+    const product =
+      p.product && typeof p.product === 'object' && !('deleted' in p.product) ? (p.product as Stripe.Product) : null
+    return {
+      price: {
+        priceId,
+        unitAmount: p.unit_amount ?? null,
+        currency: p.currency ?? null,
+        interval: (p.recurring?.interval as Interval | undefined) ?? null,
+        intervalCount: p.recurring?.interval_count ?? null,
+      },
+      product,
+    }
+  } catch {
+    // A bad/deleted/cross-account/placeholder price id shouldn't 500 — surface it unresolved.
+    return { price: base, product: null }
+  }
+}
+
 async function buildTier(
   stripe: Stripe | null,
   tier: 'STANDARD' | 'PREMIUM',
-  priceId: string | undefined,
+  priceIds: Array<string | undefined>,
 ): Promise<PlanTier> {
-  const empty: PlanTier = {
-    tier,
-    priceId: priceId ?? null,
-    unitAmount: null,
-    currency: null,
-    interval: null,
-    intervalCount: null,
-    label: null,
-    features: [],
-    productName: null,
+  const ids = priceIds.filter((x): x is string => !!x)
+  if (!ids.length) {
+    return { tier, priceId: null, unitAmount: null, currency: null, interval: null, intervalCount: null, label: null, features: [], productName: null, prices: [] }
   }
-  if (!stripe || !priceId) return empty
-  try {
-    const price = await stripe.prices.retrieve(priceId, { expand: ['product'] })
-    const product =
-      price.product && typeof price.product === 'object' && !('deleted' in price.product)
-        ? (price.product as Stripe.Product)
-        : null
-    return {
-      tier,
-      priceId,
-      unitAmount: price.unit_amount ?? null,
-      currency: price.currency ?? null,
-      interval: (price.recurring?.interval as Interval | undefined) ?? null,
-      intervalCount: price.recurring?.interval_count ?? null,
-      label: product?.metadata?.label ?? null,
-      features: parseFeatures(product?.metadata?.features),
-      productName: product?.name ?? null,
-    }
-  } catch {
-    // A bad/deleted/cross-account price id shouldn't 500 the paywall — degrade to env-only.
-    return empty
+  const resolved = await Promise.all(ids.map((id) => resolvePrice(stripe, id)))
+  const prices = resolved.map((r) => r.price)
+  const product = resolved.find((r) => r.product)?.product ?? null
+  const primary = prices[0]
+  return {
+    tier,
+    priceId: primary.priceId,
+    unitAmount: primary.unitAmount,
+    currency: primary.currency,
+    interval: primary.interval,
+    intervalCount: primary.intervalCount,
+    label: product?.metadata?.label ?? null,
+    features: parseFeatures(product?.metadata?.features),
+    productName: product?.name ?? null,
+    prices,
   }
 }
 
@@ -125,10 +158,11 @@ billingRoutes.get('/plans', async (c) => {
   if (plansCache && Date.now() - plansCache.at < PLANS_TTL_MS) {
     return c.json(plansCache.data)
   }
-  const env = c.env as Env
-  const stripe = env.STRIPE_SECRET_KEY
-    ? new Stripe(env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient() })
-    : null
+  // Read string env generically so optional *_YEARLY vars (not in every app's Env type) work.
+  const raw = c.env as unknown as Record<string, string | undefined>
+  const secret = raw.STRIPE_SECRET_KEY
+  const stripe = secret ? new Stripe(secret, { httpClient: Stripe.createFetchHttpClient() }) : null
+  const mode = secret?.includes('_live_') ? 'live' : secret?.includes('_test_') ? 'test' : null
 
   const free: PlanTier = {
     tier: 'FREE',
@@ -140,13 +174,21 @@ billingRoutes.get('/plans', async (c) => {
     label: null,
     features: [],
     productName: null,
+    prices: [],
   }
   const [standard, premium] = await Promise.all([
-    buildTier(stripe, 'STANDARD', env.STRIPE_PRICE_STANDARD),
-    buildTier(stripe, 'PREMIUM', env.STRIPE_PRICE_PREMIUM),
+    buildTier(stripe, 'STANDARD', [raw.STRIPE_PRICE_STANDARD, raw.STRIPE_PRICE_STANDARD_YEARLY]),
+    buildTier(stripe, 'PREMIUM', [raw.STRIPE_PRICE_PREMIUM, raw.STRIPE_PRICE_PREMIUM_YEARLY]),
   ])
 
-  const data = { tiers: [free, standard, premium] }
+  const data: PlansResponse = {
+    mode,
+    subscription: {
+      trialDays: APP_CONFIG.subscription?.trialDays ?? null,
+      gracePeriodDays: APP_CONFIG.subscription?.gracePeriodDays ?? null,
+    },
+    tiers: [free, standard, premium],
+  }
   plansCache = { at: Date.now(), data }
   return c.json(data)
 })
