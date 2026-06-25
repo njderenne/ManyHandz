@@ -118,7 +118,11 @@ export function PageWrapper({
       ) : (
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          // iOS pads above the keyboard. On Android the window's adjustResize
+          // (app.json softwareKeyboardLayoutMode: 'resize') already lifts content; adding
+          // behavior='height' on top double-shrinks the layout (gaps/overshoot in the chat &
+          // messages composers), so Android stays undefined and lets adjustResize do the work.
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {body}
         </KeyboardAvoidingView>

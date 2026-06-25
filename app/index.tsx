@@ -173,7 +173,8 @@ export default function Dashboard() {
   }
 
   return (
-    <PageWrapper width="wide" onRefresh={onRefresh} className="pb-28">
+    <>
+      <PageWrapper width="wide" onRefresh={onRefresh} className="pb-28">
       <Stack.Screen options={{ title: 'Home', headerShown: false }} />
 
       {/* Greeting */}
@@ -294,11 +295,14 @@ export default function Dashboard() {
         </Link>
       ) : null}
 
-      {/* PARENT / ROOMMATE FAB → new chore */}
+      </PageWrapper>
+
+      {/* PARENT / ROOMMATE FAB → new chore. Sibling of PageWrapper (OUTSIDE the page's ScrollView)
+          so it pins to the screen's bottom-right instead of scrolling away with the content. */}
       {can('createChores') ? (
         <FAB icon={Plus} accessibilityLabel="New chore" onPress={() => router.push('/chores/new' as Href)} />
       ) : null}
-    </PageWrapper>
+    </>
   )
 }
 
