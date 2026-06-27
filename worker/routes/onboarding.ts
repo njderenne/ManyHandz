@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
-import { and, eq } from 'drizzle-orm'
+import { and, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireSession, type AuthEnv } from '../middleware/org'
+import { requireTier } from '../entitlements'
 import { roleForJoin, type HouseholdMode } from '@/lib/config/modes'
+import { APP_CONFIG } from '@/lib/config/app'
 
 /**
  * Onboarding — join an existing household by its invite code. Mounted at /api/households.
@@ -50,6 +52,27 @@ onboardingRoutes.post('/join', requireSession, async (c) => {
     .where(and(eq(schema.member.organizationId, org.id), eq(schema.member.userId, session.user.id)))
     .limit(1)
   if (existing) return c.json({ orgId: org.id, alreadyMember: true })
+
+  // Free-tier member cap: a FREE household grows to APP_CONFIG.monetization.limits.members; past
+  // that the organizer must be on Premium. requireTier lets trialing/grace orgs through, so we only
+  // count + block when the household isn't entitled. (Re-joins above short-circuit before this.)
+  const memberCap = APP_CONFIG.monetization.limits.members
+  const gate = await requireTier(db, org.id, 'STANDARD')
+  if (!gate.ok) {
+    const [{ value: memberCount }] = await db
+      .select({ value: count() })
+      .from(schema.member)
+      .where(and(eq(schema.member.organizationId, org.id), eq(schema.member.isActive, true)))
+    if (memberCount >= memberCap) {
+      return c.json(
+        {
+          error: `This household is full (${memberCap} members on the free plan). The organizer can upgrade to Premium to add more.`,
+          reason: gate.reason,
+        },
+        402,
+      )
+    }
+  }
 
   await db.insert(schema.member).values({
     id: crypto.randomUUID(),

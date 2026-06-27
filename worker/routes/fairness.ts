@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg } from '../middleware/org'
+import { requireTier } from '../entitlements'
 import { type HouseholdEnv } from '../household'
 import { computeFairness, type MemberContribution } from '@/lib/manyhandz/fairness'
 import { todayInTz, shiftDate, compareDate } from '@/lib/manyhandz/dates'
@@ -83,6 +84,10 @@ fairnessRoutes.get('/:orgId/fairness', requireOrg, async (c) => {
   const period = parsed.data.period
 
   const db = getDb(c.env.DATABASE_URL)
+
+  // Paid: the fairness / effort-balance report is a Premium feature (history & insights).
+  const gate = await requireTier(db, orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
 
   // Household timezone — day boundaries (period range, "away") are in the household's tz, not UTC.
   const [org] = await db

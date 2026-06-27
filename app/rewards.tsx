@@ -14,6 +14,7 @@ import { List, ListItem } from '@/components/ui/list'
 import { EmptyState } from '@/components/ui/empty-state'
 import { AsyncBoundary } from '@/components/ui/async-boundary'
 import { Spinner } from '@/components/ui/spinner'
+import { TierGate } from '@/components/ui/tier-gate'
 import { useToast } from '@/components/ui/toast'
 import { useColors } from '@/lib/config/theme'
 import { cn } from '@/lib/utils'
@@ -100,7 +101,11 @@ export default function RewardsScreen() {
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} tabs={tabs} />
 
         {tab === 'rewards' ? (
-          <RewardsTab orgId={orgId ?? ''} userId={session?.user.id} canRedeem={can('redeemRewards')} canManage={can('createRewards')} canApprove={can('approveCompletions')} />
+          // Paid (Premium): the rewards/allowance/points economy. TierGate only decorates — the
+          // Worker (worker/routes/rewards.ts) is the real gate. Achievements/Leaderboard stay free.
+          <TierGate min="STANDARD">
+            <RewardsTab orgId={orgId ?? ''} userId={session?.user.id} canRedeem={can('redeemRewards')} canManage={can('createRewards')} canApprove={can('approveCompletions')} />
+          </TierGate>
         ) : tab === 'achievements' ? (
           <AchievementsTab orgId={orgId ?? ''} />
         ) : (

@@ -55,7 +55,7 @@ export const APP_CONFIG = {
     redirectTo: 'landing' as 'login' | 'landing',
   },
   subscription: {
-    trialDays: 14,
+    trialDays: 7,
     gracePeriodDays: 3,
   },
   /**
@@ -71,13 +71,26 @@ export const APP_CONFIG = {
    * FREE → STANDARD → PREMIUM ladder. Labels are display copy — rename per app (e.g. "Plus").
    */
   monetization: {
+    /**
+     * ManyHandz sells ONE paid tier — "Premium" — for the whole household. The ladder still ranks
+     * FREE < STANDARD < PREMIUM (entitlements.ts / useSubscription), so the single paid plan lives
+     * in the STANDARD slot (the lowest paid rank): every gate is `requireTier(…, 'STANDARD')` and
+     * TierGate min="STANDARD". The PREMIUM slot is intentionally unsold — with no Stripe price it
+     * never renders on the paywall (it hides any paid tier without a priceId), so there's just the
+     * one upgrade to buy. Its label is kept DISTINCT from STANDARD on purpose: if the studio admin
+     * ever configures a PREMIUM Stripe price, the paywall must not show two identically-named cards.
+     */
     tiers: {
       FREE: { label: 'Free' },
-      STANDARD: { label: 'Pro' },
-      PREMIUM: { label: 'Premium' },
+      STANDARD: { label: 'Premium' },
+      PREMIUM: { label: 'Premium Plus' },
     },
-    /** Per-app free-tier limits, e.g. `{ plants: 3 }` — screens read these to gate creation. */
-    limits: {} as Record<string, number>,
+    /**
+     * Per-app free-tier limits — screens read these to gate creation and the Worker enforces them.
+     * `lists`: max active chore definitions a FREE household keeps (the chore library); `members`:
+     * max household members a FREE household can grow to (the organizer pays to grow past it).
+     */
+    limits: { lists: 3, members: 3 } as Record<string, number>,
     /** Per-app feature keys that require a paid tier, e.g. `['ai-diagnosis', 'export']`. */
     paidFeatures: [] as string[],
   },

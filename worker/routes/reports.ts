@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg } from '../middleware/org'
+import { requireTier } from '../entitlements'
 import { type HouseholdEnv } from '../household'
 
 /**
@@ -40,6 +41,9 @@ const reportColumns = {
 
 reportRoutes.get('/:orgId/reports', requireOrg, async (c) => {
   const orgId = c.get('orgId')
+  // Paid: history & insights (the weekly Report Card) is a Premium feature.
+  const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const parsed = historyQuery.safeParse({ limit: c.req.query('limit') })
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const limit = parsed.data.limit ?? HISTORY_LIMIT
@@ -56,6 +60,8 @@ reportRoutes.get('/:orgId/reports', requireOrg, async (c) => {
 
 reportRoutes.get('/:orgId/reports/current', requireOrg, async (c) => {
   const orgId = c.get('orgId')
+  const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const [row] = await getDb(c.env.DATABASE_URL)
     .select(reportColumns)
     .from(schema.weeklyReport)

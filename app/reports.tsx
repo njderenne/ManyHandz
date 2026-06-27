@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { Sparkline } from '@/components/ui/chart'
 import { Section } from '@/components/gallery/kit'
+import { TierGate } from '@/components/ui/tier-gate'
 import { useColors } from '@/lib/config/theme'
 import { iconFor } from '@/lib/manyhandz/icons'
 import { useHouseholdMode } from '@/lib/hooks/useHouseholdMode'
@@ -291,11 +292,16 @@ export default function ReportsScreen() {
       <>
         <Stack.Screen options={{ headerShown: true, title: 'Report Card' }} />
         <PageWrapper>
-          <EmptyState
-            icon={Sparkles}
-            title="Couldn't load your report cards"
-            description="Something went wrong fetching this household's weekly reports. Pull to try again."
-          />
+          {/* Paid (Premium): the weekly Report Card. A non-entitled org's fetch 402s and lands here,
+              so TierGate shows its default UpgradePrompt; a paying/trialing org with a genuine fetch
+              error sees the error state. The Worker (worker/routes/reports.ts) is the real gate. */}
+          <TierGate min="STANDARD">
+            <EmptyState
+              icon={Sparkles}
+              title="Couldn't load your report cards"
+              description="Something went wrong fetching this household's weekly reports. Pull to try again."
+            />
+          </TierGate>
         </PageWrapper>
       </>
     )

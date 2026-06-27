@@ -14,6 +14,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
 import { AsyncBoundary } from '@/components/ui/async-boundary'
 import { Spinner } from '@/components/ui/spinner'
+import { TierGate } from '@/components/ui/tier-gate'
 import { useColors, type Palette } from '@/lib/config/theme'
 import { useHouseholdMode } from '@/lib/hooks/useHouseholdMode'
 import { useHouseholdMembers, type HouseholdMember } from '@/lib/query/hooks/useHousehold'
@@ -182,7 +183,10 @@ export default function FairnessScreen() {
             action={<Button label="Back home" variant="outline" onPress={() => router.replace('/')} />}
           />
         ) : (
-          <>
+          // Paid (Premium): the fairness / effort-balance report. TierGate shows its default
+          // UpgradePrompt to non-entitled orgs; the Worker (worker/routes/fairness.ts) is the real
+          // gate (the query 402s without entitlement).
+          <TierGate min="STANDARD">
             <SegmentedControl
               value={period}
               onValueChange={(v) => setPeriod(v as Period)}
@@ -271,7 +275,7 @@ export default function FairnessScreen() {
                 </>
               ) : null}
             </AsyncBoundary>
-          </>
+          </TierGate>
         )}
       </PageWrapper>
     </>

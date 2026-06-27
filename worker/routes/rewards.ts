@@ -5,6 +5,7 @@ import { getDb, schema } from '@/lib/db'
 import { requireOrg, audit } from '../middleware/org'
 import { requirePermission, resolveHousehold, type HouseholdEnv } from '../household'
 import { can } from '@/lib/config/modes'
+import { requireTier } from '../entitlements'
 import { POINTS_KIND } from './household'
 
 /**
@@ -68,6 +69,10 @@ rewardRoutes.get('/:orgId/rewards', requireOrg, async (c) => {
 
 rewardRoutes.post('/:orgId/rewards', requireOrg, requirePermission('createRewards'), async (c) => {
   const { orgId, memberId } = c.get('household')
+  // Paid: the rewards/allowance/points economy is a Premium feature. Server-side gate (the client's
+  // TierGate only decorates) — trialing/grace orgs pass via requireTier.
+  const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const parsed = rewardCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
@@ -89,6 +94,8 @@ rewardRoutes.post('/:orgId/rewards', requireOrg, requirePermission('createReward
 
 rewardRoutes.patch('/:orgId/rewards/:rewardId', requireOrg, requirePermission('createRewards'), async (c) => {
   const { orgId } = c.get('household')
+  const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const rewardId = c.req.param('rewardId')
   const parsed = rewardUpdate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -114,6 +121,8 @@ rewardRoutes.patch('/:orgId/rewards/:rewardId', requireOrg, requirePermission('c
 
 rewardRoutes.delete('/:orgId/rewards/:rewardId', requireOrg, requirePermission('createRewards'), async (c) => {
   const { orgId } = c.get('household')
+  const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const rewardId = c.req.param('rewardId')
   const [row] = await getDb(c.env.DATABASE_URL)
     .update(schema.reward)
@@ -130,6 +139,9 @@ rewardRoutes.delete('/:orgId/rewards/:rewardId', requireOrg, requirePermission('
 rewardRoutes.post('/:orgId/rewards/:rewardId/redeem', requireOrg, requirePermission('redeemRewards'), async (c) => {
   const ctx = c.get('household')
   const db = getDb(c.env.DATABASE_URL)
+  // Paid: redeeming points for rewards is the Premium engagement economy.
+  const gate = await requireTier(db, ctx.orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const rewardId = c.req.param('rewardId')
 
   const [reward] = await db
@@ -281,6 +293,8 @@ rewardRoutes.post('/:orgId/reward-redemptions/:id/approve', requireOrg, async (c
   const ctx = await resolveHousehold(c)
   if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
+  const gate = await requireTier(db, ctx.orgId, 'STANDARD')
+  if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const redemption = await loadPendingRedemption(c.env, ctx.orgId, c.req.param('id'))
   if (!redemption) return c.json({ error: 'not found' }, 404)
   if (redemption.status !== 'pending') return c.json({ error: 'not pending' }, 409)

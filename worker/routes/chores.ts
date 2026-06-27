@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg, audit } from '../middleware/org'
 import { requirePermission, type HouseholdEnv } from '../household'
+import { requireTier } from '../entitlements'
 import { createAI } from '../ai'
 import { describeReference } from '../ai/verify-photos'
 import { logApiUsage } from '../usage/log'
+import { APP_CONFIG } from '@/lib/config/app'
 
 /**
  * Fire-and-forget: derive the "what done looks like" rubric from a chore's reference photo and store it,
@@ -113,12 +115,32 @@ choreRoutes.get('/:orgId/chores/:choreId', requireOrg, async (c) => {
 
 choreRoutes.post('/:orgId/chores', requireOrg, requirePermission('createChores'), async (c) => {
   const { orgId, memberId } = c.get('household')
+  const db = getDb(c.env.DATABASE_URL)
+
+  // Free-tier cap: a FREE household keeps up to APP_CONFIG.monetization.limits.lists active chores;
+  // creating beyond that needs Premium. requireTier already lets trialing/grace orgs through, so we
+  // only count + cap when the org isn't entitled. Editing/deleting existing chores stays free.
+  const listCap = APP_CONFIG.monetization.limits.lists
+  const gate = await requireTier(db, orgId, 'STANDARD')
+  if (!gate.ok) {
+    const [{ value: activeCount }] = await db
+      .select({ value: count() })
+      .from(schema.chore)
+      .where(and(eq(schema.chore.organizationId, orgId), eq(schema.chore.isActive, true)))
+    if (activeCount >= listCap) {
+      return c.json(
+        { error: `Free households are limited to ${listCap} chores. Upgrade to Premium to add more.`, reason: gate.reason },
+        402,
+      )
+    }
+  }
+
   const parsed = choreCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
   if (!(await categoryOk(c.env, orgId, d.categoryId))) return c.json({ error: 'invalid category' }, 400)
 
-  const [row] = await getDb(c.env.DATABASE_URL)
+  const [row] = await db
     .insert(schema.chore)
     .values({
       organizationId: orgId,
