@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import Stripe from 'stripe'
 import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
+import { APP_CONFIG } from '@/lib/config/app'
 import { requireOrg, requireRole, type AuthEnv } from '../middleware/org'
 import { unlockAchievement } from '../achievements'
 import type { Env } from '../env'
@@ -106,6 +107,14 @@ stripeRoutes.post('/checkout', requireOrg, requireRole('owner', 'admin'), async 
       .where(eq(schema.organization.id, org.id))
   }
 
+  // Apply a free trial at checkout WITHOUT double-dipping: if the org is already inside its in-app
+  // trial, grant only the days REMAINING so the Stripe trial ends when that one would have; a user
+  // who never trialed (org.trialEndsAt == null) gets the full configured trial; an already-expired
+  // trial grants none (they've had it). trialDays:0 in config disables the configured trial.
+  const trialDays = APP_CONFIG.subscription?.trialDays ?? 0
+  const trialPeriodDays = org.trialEndsAt
+    ? Math.max(0, Math.ceil((org.trialEndsAt.getTime() - Date.now()) / 86_400_000))
+    : trialDays
   const checkout = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
@@ -114,7 +123,10 @@ stripeRoutes.post('/checkout', requireOrg, requireRole('owner', 'admin'), async 
     // billing screen should point these there (builder/MINT.md §8).
     success_url: `${c.env.BETTER_AUTH_URL}/?checkout=success`,
     cancel_url: `${c.env.BETTER_AUTH_URL}/?checkout=cancelled`,
-    subscription_data: { metadata: { organizationId: org.id } },
+    subscription_data: {
+      metadata: { organizationId: org.id },
+      ...(trialPeriodDays > 0 ? { trial_period_days: trialPeriodDays } : {}),
+    },
     metadata: { organizationId: org.id },
   })
   return c.json({ url: checkout.url })
