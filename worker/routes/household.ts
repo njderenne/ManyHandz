@@ -2,10 +2,11 @@ import { Hono } from 'hono'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { can, getModeConfig, roleForJoin, HOUSEHOLD_ROLES, type HouseholdMode } from '@/lib/config/modes'
 import { levelForXp, titleForLevel } from '@/lib/manyhandz/levels'
+import { APP_CONFIG } from '@/lib/config/app'
 
 /**
  * Household + members — the foundational ManyHandz resource. `GET /household` returns the household
@@ -18,7 +19,7 @@ import { levelForXp, titleForLevel } from '@/lib/manyhandz/levels'
  *   GET   /api/organizations/:orgId/members               → members + derived stats
  *   PATCH /api/organizations/:orgId/members/:memberId     → self profile, or admin role/allowance
  */
-export const householdRoutes = new Hono<HouseholdEnv>()
+export const householdRoutes = new Hono<AuthEnv>()
 
 /** creditLedger.kind for chore points (balance) / XP (sum of positive deltas). */
 export const POINTS_KIND = 'points'
@@ -44,7 +45,7 @@ function newInviteCode(): string {
 }
 
 householdRoutes.get('/:orgId/household', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const [org] = await getDb(c.env.DATABASE_URL)
     .select()
@@ -100,8 +101,8 @@ const householdSettings = z
   .partial()
 
 householdRoutes.patch('/:orgId/household', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'editHouseholdSettings')) {
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'org:settings')) {
     return c.json({ error: 'forbidden' }, 403)
   }
   const parsed = householdSettings.safeParse(await c.req.json().catch(() => null))
@@ -223,11 +224,11 @@ const SELF_FIELDS = ['displayName', 'avatarUrl', 'bio', 'birthday', 'favoriteCol
 const ADMIN_FIELDS = ['householdRole', 'isActive', 'allowanceEnabled', 'allowancePayoutType', 'allowanceAmountCents', 'allowanceRewardDescription', 'allowanceThresholdPct'] as const
 
 householdRoutes.patch('/:orgId/members/:memberId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const targetId = c.req.param('memberId')
   const isSelf = targetId === ctx.memberId
-  const canManage = can(ctx.mode, ctx.householdRole, 'changeRoles')
+  const canManage = can(ctx.mode, ctx.householdRole, 'member:set_role')
   if (!isSelf && !canManage) return c.json({ error: 'forbidden' }, 403)
 
   const parsed = memberUpdate.safeParse(await c.req.json().catch(() => null))
@@ -284,16 +285,19 @@ householdRoutes.post('/:orgId/household/setup', requireOrg, async (c) => {
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const mode = parsed.data.mode as HouseholdMode
   const code = newInviteCode()
-  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+  // Trial length comes from config (BILLING §6.1) — 0 disables the setup-time stamp entirely.
+  const trialDays = APP_CONFIG.subscription.trialDays
+  const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
 
   await db
     .update(schema.organization)
     .set({
       mode,
+      // SPINE §10.3: organization.kind IS the mode — dual-written until release N+1 drops mode.
+      kind: mode,
       inviteCode: code,
       timezone: parsed.data.timezone ?? 'America/New_York',
-      subscriptionStatus: 'trialing',
-      trialEndsAt,
+      ...(trialDays > 0 ? { subscriptionStatus: 'trialing' as const, trialEndsAt } : {}),
     })
     .where(eq(schema.organization.id, orgId))
   await db.update(schema.member).set({ householdRole: roleForJoin(mode, true) }).where(eq(schema.member.id, m.id))

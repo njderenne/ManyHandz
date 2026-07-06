@@ -8,6 +8,9 @@ export const APP_CONFIG = {
   description:
     'One chore app for families and roommates — assign and auto-rotate chores, score fairness, photo-verify completion, and gamify it for kids. Many hands make light work.',
   url: 'https://manyhandz.io',
+  /** Native deep-link scheme — MUST match app.json `scheme` (single source for wiring that can't
+   *  import app.json, e.g. worker/auth.ts trustedOrigins — MINOR-9). */
+  scheme: 'manyhandz',
   /**
    * Fleet standard: one monitored studio inbox serves every minted app (display-name carries the
    * per-app identity — see worker/email/mailer.ts). Do NOT create per-app support mailboxes.
@@ -29,6 +32,18 @@ export const APP_CONFIG = {
     maps: false,
     qr: true, // QR household-join invites
     voice: false,
+    // ── 2026-07-05 harvest modules (all opt-in; flag lights up UI + endpoints + cron steps) ──
+    subjects: false,     // Subject primitive (Person ≠ Member ≠ User) — MH members ARE the roster
+    shareGrants: false,  // named, scoped, time-boxed outsider access (+ public /api/grant surface)
+    oversight: false,    // capability-gated cross-member reads (worker/lib/oversight.ts)
+    escalations: false,  // escalation ladder + cron sweep (safety module — N/A for chores)
+    prompts: false,      // versioned prompt catalog + cadence-windowed nudge cron
+    reports: false,      // range-metrics report generator (MH has its own weekly report card)
+    catalog: false,      // seeded reference catalog (MH chore categories are richer, kept)
+    health: false,       // HealthKit / Health Connect bridge
+    wearables: false,    // provider cron-sync half
+    gpsRoutes: false,    // foreground live route tracking
+    export: true,        // org data export (JSON/CSV/print-HTML) — data-ownership promise
   },
   /**
    * Social auth providers — gate the "Continue with Google/Apple" buttons on the login screen.
@@ -55,8 +70,21 @@ export const APP_CONFIG = {
     redirectTo: 'landing' as 'login' | 'landing',
   },
   subscription: {
-    trialDays: 7,
+    /** LOCKED pricing decision (appfactory-manyhandz-pricing, 2026-06-25): 14-day trial. The
+     *  interval-aware checkout clamp (worker/billing/trial.ts) trims WEEKLY-plan checkout trials
+     *  to 7 days (monthly/yearly keep 14) — William-approved 2026-07-06. */
+    trialDays: 14,
     gracePeriodDays: 3,
+    /** The single sold plan lives in the STANDARD slot (see monetization) — trials lift to it. */
+    trialTier: 'STANDARD' as 'STANDARD' | 'PREMIUM',
+    /**
+     * Which org creations bootstrap an in-app trial (stamps trialing + trialEndsAt; paid features
+     * work during the trial with NO subscription row — effectiveTier lifts on trialEndsAt):
+     * 'all' — every household gets its trial at creation (the household/setup route re-stamps from
+     * setup time, same config source). Trials are per-org; `limits.tenants` is the anti-farming
+     * control (unset for MH — households are cheap and joining is the growth loop).
+     */
+    trialOnOrgCreate: 'all' as 'all' | 'personal' | 'none',
   },
   /**
    * Measurement units — the per-app default display system for heights/weights/distances.
@@ -65,30 +93,59 @@ export const APP_CONFIG = {
   units: {
     default: 'imperial' as 'imperial' | 'metric',
   },
-  /**
-   * Monetization — the tier ladder plus per-app slots for what each app sells. The paywall
-   * (app/paywall.tsx) renders plan cards from `tiers`; TierGate/useHasTier rank against the
-   * FREE → STANDARD → PREMIUM ladder. Labels are display copy — rename per app (e.g. "Plus").
-   */
   monetization: {
     /**
      * ManyHandz sells ONE paid tier — "Premium" — for the whole household. The ladder still ranks
      * FREE < STANDARD < PREMIUM (entitlements.ts / useSubscription), so the single paid plan lives
      * in the STANDARD slot (the lowest paid rank): every gate is `requireTier(…, 'STANDARD')` and
-     * TierGate min="STANDARD". The PREMIUM slot is intentionally unsold — with no Stripe price it
-     * never renders on the paywall (it hides any paid tier without a priceId), so there's just the
-     * one upgrade to buy. Its label is kept DISTINCT from STANDARD on purpose: if the studio admin
-     * ever configures a PREMIUM Stripe price, the paywall must not show two identically-named cards.
+     * TierGate min="STANDARD". The PREMIUM slot is intentionally unsold (sellableTiers below —
+     * the server-side /plans filter is authoritative); its label stays DISTINCT from STANDARD so a
+     * future PREMIUM price never renders two identically-named cards.
+     *
+     * V5: the paywall's baked copy lives HERE so app/paywall.tsx is byte-identical fleet-wide.
+     * Live Stripe Product metadata (label/features) overrides at runtime; `fallback` renders when
+     * plans are unresolved. Price labels mirror the locked grid (weekly $2.99 · monthly $5.99 ·
+     * yearly $39.99 — the monthly figure anchors the fallback).
      */
     tiers: {
-      FREE: { label: 'Free' },
-      STANDARD: { label: 'Premium' },
-      PREMIUM: { label: 'Premium Plus' },
+      FREE: {
+        label: 'Free',
+        fallback: {
+          priceLabel: '$0',
+          features: ['Everything you need to get started', 'One household'],
+        },
+      },
+      STANDARD: {
+        label: 'Premium',
+        fallback: {
+          priceLabel: '$5.99 / month',
+          features: [
+            'Everything in Free',
+            'Unlimited chores & members',
+            'AI photo verification',
+            'Priority support',
+          ],
+        },
+      },
+      PREMIUM: {
+        label: 'Premium Plus',
+        fallback: {
+          priceLabel: '$9.99 / month',
+          features: ['Everything in Premium', 'Advanced AI features', 'Early access to new features'],
+        },
+      },
     },
+    /** Tiers the paywall SELLS — MH sells FREE + the one paid plan (BILLING §11.7 wave 1). */
+    sellableTiers: ['FREE', 'STANDARD'] as ('FREE' | 'STANDARD' | 'PREMIUM')[],
+    /** Freemium — never a hard wall. */
+    requireSubscription: false,
+    /** Tier the one-time Lifetime SKU would grant. Dormant — no STRIPE_PRICE_LIFETIME configured. */
+    lifetimeTier: 'PREMIUM' as 'STANDARD' | 'PREMIUM',
     /**
-     * Per-app free-tier limits — screens read these to gate creation and the Worker enforces them.
-     * `lists`: max active chore definitions a FREE household keeps (the chore library); `members`:
-     * max household members a FREE household can grow to (the organizer pays to grow past it).
+     * Free-tier limits, ENFORCED server-side (worker/billing/limits.ts + the app's own routes).
+     * RESERVED chassis keys: members (Better-Auth membershipLimit + the QR-join cap) · tenants ·
+     * mediaGb · historyDays. App keys: `lists` = max active chore definitions a FREE household
+     * keeps (worker/routes/chores.ts).
      */
     limits: { lists: 3, members: 3 } as Record<string, number>,
     /** Per-app feature keys that require a paid tier, e.g. `['ai-diagnosis', 'export']`. */
@@ -110,6 +167,31 @@ export const APP_CONFIG = {
   tenant: {
     singular: 'Household',
     plural: 'Households',
+    /** Team-first: households are created/joined during onboarding — no auto personal org. */
+    autoPersonalOrg: false,
+    /** MH ships its OWN onboarding gate (src/lib/hooks/useOnboarding.ts) — the chassis
+     *  use-context-guard stays unmounted ('none'). */
+    onboarding: 'none' as 'none' | 'require-create',
+  },
+  /** Display vocab for the subject primitive — DORMANT (features.subjects=false); chassis default. */
+  subjects: {
+    kinds: [
+      { kind: 'person', singular: 'Person', plural: 'People', allowSelfLink: true },
+    ] as ReadonlyArray<{ kind: string; singular: string; plural: string; allowSelfLink: boolean }>,
+  },
+  /** Share-grant policy — DORMANT (features.shareGrants=false); chassis defaults. */
+  grants: {
+    maxDurationDays: 30,
+    revokeOnLapse: false,
+  },
+  /** Escalation-ladder policy — DORMANT (features.escalations=false); chassis defaults. */
+  safety: {
+    escalation: {
+      stages: ['reminder', 'follow_up', 'alert', 'missed'] as readonly string[],
+      dwellMinutes: { reminder: 15, follow_up: 30, alert: 60 } as Record<string, number>,
+      smsStage: 'alert' as string | null,
+      dailySmsCap: 10,
+    },
   },
   /**
    * Legal config — interpolated into /terms and /privacy. Fleet standard: the studio (Criterial)

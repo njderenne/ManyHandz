@@ -153,3 +153,49 @@ export function formatMeasurement(
   const value = round(toDisplayValue(canonical, kind, system), digits)
   return `${value} ${unitSymbol(kind, system)}`
 }
+
+// ── Duration & pace (2026-07-05 harvest — projectgains pace.ts, generalized) ──────────────────
+// Time formatters for anything the GPS/tracking tier measures. Pure + synchronous like the rest
+// of this file; distance stays SI-canonical (meters) everywhere else, so these are the ONLY
+// helpers that speak "per km / per mile" directly.
+
+/**
+ * Format a duration in seconds as `H:MM:SS`, or `M:SS` when under an hour. Returns an em-dash
+ * for zero/invalid input (an unstarted timer reads as "—", not "0:00").
+ *
+ * @example
+ * formatDuration(5025)  // "1:23:45"
+ * formatDuration(303)   // "5:03"
+ * formatDuration(0)     // "—"
+ */
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0 || !Number.isFinite(seconds)) return '—'
+  const total = Math.round(seconds) // round once up front so ":60" never appears at a boundary
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+/**
+ * Format a pace (stored SI-canonical as seconds per KILOMETER) for display in the requested
+ * distance unit, in the conventional minutes'seconds" notation. Returns an em-dash for
+ * zero/invalid pace (a track with no distance yet has no pace).
+ *
+ * @example
+ * formatPace(330, 'km') // "5'30\" /km"
+ * formatPace(330, 'mi') // "8'51\" /mi"
+ */
+export function formatPace(secondsPerKm: number, unit: 'km' | 'mi'): string {
+  if (!secondsPerKm || secondsPerKm <= 0 || !Number.isFinite(secondsPerKm)) return '—'
+  // Convert via the exact factor above (m/mi ÷ m/km), then round to whole seconds BEFORE
+  // splitting so a value like 359.6s renders 6'00", not 5'60".
+  const perUnit = unit === 'mi' ? secondsPerKm * (METERS_PER_MILE / 1000) : secondsPerKm
+  const total = Math.round(perUnit)
+  const min = Math.floor(total / 60)
+  const sec = total % 60
+  return `${min}'${sec.toString().padStart(2, '0')}" /${unit}`
+}

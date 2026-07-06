@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 
 /**
  * Activity feed + reactions — the household's running log of what happened (the same org-scoped
@@ -20,7 +20,7 @@ import { resolveHousehold, type HouseholdEnv } from '../household'
  *
  * Pairs with src/lib/query/hooks/useActivity.ts.
  */
-export const activityRoutes = new Hono<HouseholdEnv>()
+export const activityRoutes = new Hono<AuthEnv>()
 
 /** The reaction set (named keys, stored verbatim in activity_reaction.emoji). */
 export const REACTION_EMOJIS = ['thumbsup', 'heart', 'fire', 'star', 'clap'] as const
@@ -40,7 +40,7 @@ type ActivityFeedRow = typeof schema.activityLog.$inferSelect & {
 }
 
 activityRoutes.get('/:orgId/activity-feed', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const orgId = ctx.orgId
   const db = getDb(c.env.DATABASE_URL)
@@ -117,7 +117,7 @@ activityRoutes.get('/:orgId/activity-feed', requireOrg, async (c) => {
 })
 
 activityRoutes.post('/:orgId/activity-feed/:activityId/reactions', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const orgId = ctx.orgId
   const activityId = c.req.param('activityId')

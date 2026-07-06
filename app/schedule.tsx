@@ -112,7 +112,7 @@ export default function ScheduleScreen() {
   const update = useUpdateAssignment(orgId ?? '')
   const chores = useChores(orgId ?? '')
   const createAssignment = useCreateAssignment(orgId ?? '')
-  const canAssign = can('assignChores')
+  const canAssign = can('chore:assign')
 
   const memberById = useMemo(() => {
     const map = new Map<string, HouseholdMember>()
@@ -136,7 +136,7 @@ export default function ScheduleScreen() {
     return map
   }, [visible])
 
-  const canMarkOthers = can('approveCompletions') || can('assignChores')
+  const canMarkOthers = can('completion:approve') || can('chore:assign')
 
   const onDone = (a: AssignmentWithChore) => {
     update.mutate(
@@ -309,7 +309,7 @@ export default function ScheduleScreen() {
                   assignment={a}
                   member={memberById.get(a.assignedToMemberId)}
                   useAccent={features?.accentColors ?? false}
-                  canMark={can('markOwnComplete') || canMarkOthers}
+                  canMark={can('completion:mark_own') || canMarkOthers}
                   pending={update.isPending}
                   onDone={() => onDone(a)}
                   onSkip={() => onSkip(a)}

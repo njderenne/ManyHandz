@@ -145,7 +145,7 @@ export default function GoalsScreen() {
   const [points, setPoints] = useState(0)
 
   const goals = goalsQuery.data ?? []
-  const canApprove = can('createGoalsForAnyone')
+  const canApprove = can('goal:create_any')
   const active = goals.filter((g) => g.status === 'active')
   const completed = goals.filter((g) => g.status === 'completed')
   const pending = canApprove ? goals.filter((g) => g.status === 'pending_approval') : []

@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { canWithHousehold } from '@/lib/config/modes'
 import { POINTS_KIND } from './household'
 
@@ -32,7 +32,7 @@ import { POINTS_KIND } from './household'
  *   POST   /api/organizations/:orgId/goals/:goalId/cancel   → cancel        (createGoalsForAnyone)
  *   POST   /api/organizations/:orgId/goals/:goalId/contribute { points } → contribute from balance
  */
-export const goalRoutes = new Hono<HouseholdEnv>()
+export const goalRoutes = new Hono<AuthEnv>()
 
 const goalCreate = z.object({
   title: z.string().trim().min(1).max(100),
@@ -61,7 +61,7 @@ const goalUpdate = z
 const contributeInput = z.object({ points: z.number().int().min(1).max(1_000_000) })
 
 /** Confirm a member belongs to this household (used when a parent targets another member). */
-async function memberInHousehold(env: HouseholdEnv['Bindings'], orgId: string, memberId: string) {
+async function memberInHousehold(env: AuthEnv['Bindings'], orgId: string, memberId: string) {
   const [m] = await getDb(env.DATABASE_URL)
     .select({ id: schema.member.id, userId: schema.member.userId })
     .from(schema.member)
@@ -71,7 +71,7 @@ async function memberInHousehold(env: HouseholdEnv['Bindings'], orgId: string, m
 }
 
 /** Current points balance for a user in this org (balance = SUM(creditLedger.delta) over POINTS_KIND). */
-async function pointsBalance(env: HouseholdEnv['Bindings'], orgId: string, userId: string): Promise<number> {
+async function pointsBalance(env: AuthEnv['Bindings'], orgId: string, userId: string): Promise<number> {
   const [row] = await getDb(env.DATABASE_URL)
     .select({ balance: sql`coalesce(sum(${schema.creditLedger.delta}), 0)`.mapWith(Number) })
     .from(schema.creditLedger)
@@ -114,7 +114,7 @@ goalRoutes.get('/:orgId/goals/:goalId', requireOrg, async (c) => {
 })
 
 goalRoutes.post('/:orgId/goals', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const parsed = goalCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -124,7 +124,7 @@ goalRoutes.post('/:orgId/goals', requireOrg, async (c) => {
   const targetMemberId = d.memberId ?? ctx.memberId
   const forAnyone = targetMemberId !== ctx.memberId
   if (forAnyone) {
-    if (!canWithHousehold(ctx.mode, ctx.householdRole, 'createGoalsForAnyone', ctx.policy)) {
+    if (!canWithHousehold(ctx.mode, ctx.householdRole, 'goal:create_any', ctx.policy)) {
       return c.json({ error: 'forbidden — only a parent can create goals for others' }, 403)
     }
     if (!(await memberInHousehold(c.env, ctx.orgId, targetMemberId))) {
@@ -132,14 +132,14 @@ goalRoutes.post('/:orgId/goals', requireOrg, async (c) => {
     }
   } else {
     // Self goal: needs the base self-permission (parent or kid).
-    if (!canWithHousehold(ctx.mode, ctx.householdRole, 'contributeToOwnGoals', ctx.policy)) {
+    if (!canWithHousehold(ctx.mode, ctx.householdRole, 'goal:contribute_own', ctx.policy)) {
       return c.json({ error: 'forbidden' }, 403)
     }
   }
 
   // A kid creating a goal for THEMSELVES starts pending_approval (a parent approves → active);
   // a parent's goal (own or for-anyone) is active immediately.
-  const canApprove = canWithHousehold(ctx.mode, ctx.householdRole, 'createGoalsForAnyone', ctx.policy)
+  const canApprove = canWithHousehold(ctx.mode, ctx.householdRole, 'goal:create_any', ctx.policy)
   const needsApproval = !canApprove
 
   const [row] = await getDb(c.env.DATABASE_URL)
@@ -168,8 +168,8 @@ goalRoutes.post('/:orgId/goals', requireOrg, async (c) => {
 })
 
 goalRoutes.patch('/:orgId/goals/:goalId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'createGoalsForAnyone', ctx.policy)) {
+  const ctx = await householdContext(c)
+  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'goal:create_any', ctx.policy)) {
     return c.json({ error: 'forbidden' }, 403)
   }
   const goalId = c.req.param('goalId')
@@ -198,8 +198,8 @@ goalRoutes.patch('/:orgId/goals/:goalId', requireOrg, async (c) => {
 })
 
 goalRoutes.post('/:orgId/goals/:goalId/approve', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'createGoalsForAnyone', ctx.policy)) {
+  const ctx = await householdContext(c)
+  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'goal:create_any', ctx.policy)) {
     return c.json({ error: 'forbidden' }, 403)
   }
   const goalId = c.req.param('goalId')
@@ -220,8 +220,8 @@ goalRoutes.post('/:orgId/goals/:goalId/approve', requireOrg, async (c) => {
 })
 
 goalRoutes.post('/:orgId/goals/:goalId/cancel', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'createGoalsForAnyone', ctx.policy)) {
+  const ctx = await householdContext(c)
+  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'goal:create_any', ctx.policy)) {
     return c.json({ error: 'forbidden' }, 403)
   }
   const goalId = c.req.param('goalId')
@@ -251,8 +251,8 @@ goalRoutes.post('/:orgId/goals/:goalId/cancel', requireOrg, async (c) => {
  * worker/credits.ts spendCredits RACE CAVEAT).
  */
 goalRoutes.post('/:orgId/goals/:goalId/contribute', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'contributeToOwnGoals', ctx.policy)) {
+  const ctx = await householdContext(c)
+  if (!ctx || !canWithHousehold(ctx.mode, ctx.householdRole, 'goal:contribute_own', ctx.policy)) {
     return c.json({ error: 'forbidden' }, 403)
   }
   const db = getDb(c.env.DATABASE_URL)

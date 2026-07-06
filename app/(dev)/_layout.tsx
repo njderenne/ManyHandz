@@ -1,14 +1,21 @@
 import { Pressable } from 'react-native'
-import { Tabs } from 'expo-router'
-import { LayoutGrid, Cpu, Cable, Settings as SettingsIcon } from 'lucide-react-native'
+import { Tabs, Redirect } from 'expo-router'
+import { LayoutGrid, Cpu, Cable, SlidersHorizontal } from 'lucide-react-native'
 import { useColors } from '@/lib/config/theme'
 
 /**
  * Dev gallery navigator — four tabs. Components is a hub (nested stack) so the chassis can grow
- * without adding tabs; Native and Services are live test surfaces; Settings is user preferences.
+ * without adding tabs; Native and Services are live test surfaces; Preferences is the prefs tester.
  * Lives under the `(dev)` route group so it can be excluded per app.
+ *
+ * PRODUCTION GUARD: these are QA/test surfaces — never ship them. In a production build (__DEV__
+ * false, EAS preview/production AND the web export), every (dev) route redirects home, so a
+ * signed-in user can't reach the gallery by URL/deep link even though the group is bundled. The
+ * Preferences tab is `/preferences`, NOT `/settings`, so it never collides with the production
+ * Settings hub at app/settings.tsx.
  */
 export default function DevLayout() {
+  if (!__DEV__) return <Redirect href="/" />
   const colors = useColors()
   return (
     <Tabs
@@ -48,10 +55,10 @@ export default function DevLayout() {
         options={{ title: 'Services', tabBarIcon: ({ color, size }) => <Cable color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="settings"
+        name="preferences"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => <SettingsIcon color={color} size={size} />,
+          title: 'Preferences',
+          tabBarIcon: ({ color, size }) => <SlidersHorizontal color={color} size={size} />,
         }}
       />
     </Tabs>

@@ -5,9 +5,15 @@ import { getAuth } from './auth'
 import { VERSION } from './version'
 import { scheduled } from './cron'
 import { rateLimit } from './middleware/rate-limit'
+import { devAuth } from './middleware/dev-auth'                      // A2
+import { APP_CONFIG } from '@/lib/config/app'
 import { aiRoutes } from './routes/ai'
+import { aiToolsRoutes } from './routes/ai-tools'
 import { stripeRoutes } from './routes/stripe'
+import { revenuecatRoutes } from './routes/revenuecat'
 import { billingRoutes } from './routes/billing'
+import { publicShareRoutes, shareRoutes } from './routes/sharing'
+import { realtimeRoutes } from './routes/realtime'
 import { voiceRoutes } from './routes/voice'
 import { imageRoutes } from './routes/image'
 import { pushRoutes } from './routes/push'
@@ -25,7 +31,18 @@ import { bookmarkRoutes } from './routes/bookmarks'
 import { eventRoutes } from './routes/events'
 import { messageRoutes } from './routes/messages'
 import { usersRoutes } from './routes/users'
-import { adminConfigRoutes } from './routes/admin-config'
+import { integrationsRoutes } from './routes/integrations'
+import { adminConfigRoutes } from './routes/admin-config'           // A2
+import { escalationRoutes } from './routes/escalations'             // A3
+import { grantRoutes } from './routes/grants'                       // A4
+import { grantPublicRoutes } from './routes/grant-public'           // A4
+import { exportRoutes } from './routes/export'                      // A4
+import { orgSettingsRoutes } from './routes/org-settings'           // B1
+import { subjectRoutes } from './routes/subjects'                   // B2
+import { oversightRoutes } from './routes/oversight'                // B2
+import { promptRoutes } from './routes/prompts'                     // B3
+import { generatedReportRoutes } from './routes/generated-reports'  // B3
+import { catalogRoutes } from './routes/catalog'                    // B3
 import { choreRoutes } from './routes/chores'
 import { householdRoutes } from './routes/household'
 import { assignmentRoutes } from './routes/assignments'
@@ -104,6 +121,18 @@ app.get('/api/health', (c) => c.json({ ok: true, service: 'manyhandz', version: 
 // lands. `version` is what's deployed here (worker/version.ts ← app.json).
 app.get('/api/meta', (c) => c.json({ version: VERSION, minAppVersion: c.env.MIN_APP_VERSION ?? '0.0.0' }))
 
+// Abuse caps on the brute-forceable auth endpoints (registered BEFORE the auth handler below so
+// Hono runs them first). Better-Auth's own brute-force limiter defaults to an in-MEMORY store and
+// we set no secondaryStorage, so on Workers' ephemeral isolates its counters reset constantly —
+// useless. The KV rateLimit() middleware (keyed per cf-connecting-ip for anonymous callers) is the
+// real throttle. Scoped to the SENSITIVE POSTs only — /api/auth/get-session polling stays uncapped.
+app.use('/api/auth/sign-in/*', rateLimit('auth', { limit: 20, windowSeconds: 300 }))
+app.use('/api/auth/sign-up/*', rateLimit('auth', { limit: 10, windowSeconds: 300 }))
+app.use('/api/auth/forget-password', rateLimit('auth', { limit: 10, windowSeconds: 300 }))
+app.use('/api/auth/request-password-reset', rateLimit('auth', { limit: 10, windowSeconds: 300 }))
+app.use('/api/auth/reset-password', rateLimit('auth', { limit: 10, windowSeconds: 300 }))
+app.use('/api/auth/reset-password/*', rateLimit('auth', { limit: 10, windowSeconds: 300 }))
+
 // Better-Auth owns all /api/auth/* routes: sign-in/up, OAuth callbacks, passkey, session.
 app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth(c.env).handler(c.req.raw))
 
@@ -113,6 +142,12 @@ app.get('/api/me', async (c) => {
   if (!session) return c.json({ error: 'unauthorized' }, 401)
   return c.json(session)
 })
+
+// Dev-surface auth (A2): when ADMIN_METRICS_TOKEN is set, /api/dev/* requires
+// 'Authorization: Bearer ADMIN_METRICS_TOKEN' in EVERY environment (this worker commits
+// ENVIRONMENT=development in wrangler.toml, so the token must not defer to it); unset keeps
+// today's behavior (each route 404s outside ENVIRONMENT=development). Registered BEFORE the handlers.
+app.use('/api/dev/*', devAuth)
 
 // Dev-only: preview email templates as HTML in a browser, e.g. /api/dev/email/reset
 // (templates: reset · verify · welcome · invite). 404s in production — the rendered shell is
@@ -178,12 +213,44 @@ app.use('/api/organizations/:orgId/streaks/:kind/check-in', rateLimit('streaks',
 app.use('/api/organizations/:orgId/notifications/read', rateLimit('notifications-write', { limit: 60, windowSeconds: 300 }))
 app.use('/api/organizations/:orgId/notifications/read-all', rateLimit('notifications-write', { limit: 60, windowSeconds: 300 }))
 app.use('/api/user/settings', rateLimit('settings', { limit: 60, windowSeconds: 300 }))
+// Integrations: OAuth authorize/disconnect churn (the callback is provider-initiated, browser-rate).
+app.use('/api/integrations/*', rateLimit('integrations', { limit: 30, windowSeconds: 300 }))
+// 2026-07-05 harvest caps. Reminder: '/*' does NOT match the zero-segment base path.
+app.use('/api/admin/*', rateLimit('admin', { limit: 30, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/subjects', rateLimit('subjects', { limit: 120, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/subjects/*', rateLimit('subjects', { limit: 120, windowSeconds: 300 }))
+// Public, account-less surface — tight cap blunts code-guessing (codes are 32^10; defense in depth).
+app.use('/api/grant/*', rateLimit('grant-public', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/grants', rateLimit('grants', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/grants/*', rateLimit('grants', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/escalations', rateLimit('escalations', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/escalations/*', rateLimit('escalations', { limit: 60, windowSeconds: 300 }))
+// Export is expensive (full-org serialization) — deliberately the tightest cap in the file.
+app.use('/api/organizations/:orgId/export', rateLimit('export', { limit: 5, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/prompts', rateLimit('prompts', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/prompts/*', rateLimit('prompts', { limit: 60, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/generated-reports', rateLimit('generated-reports', { limit: 20, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/generated-reports/*', rateLimit('generated-reports', { limit: 20, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/catalog', rateLimit('catalog', { limit: 120, windowSeconds: 300 }))
+app.use('/api/organizations/:orgId/catalog/*', rateLimit('catalog', { limit: 120, windowSeconds: 300 }))
+// Org settings/delete is destructive and cheap to spam (B1).
+app.use('/api/orgs/settings', rateLimit('org-settings', { limit: 30, windowSeconds: 300 }))
+// MINOR-1: /api/billing/plans is PUBLIC and fans out to Stripe list calls — cap it.
+app.use('/api/billing/plans', rateLimit('billing-plans', { limit: 60, windowSeconds: 300 }))
 
 // AI — tiered, cost-aware (classify / reason / complex / vision), auth-gated.
 app.route('/api/ai', aiRoutes)
 
+// AI structured-extraction tools — /api/ai/extract (FAIL-CLOSED, paid) + /api/ai/advise
+// (FAIL-OPEN advisory). Same /api/ai prefix, so the /api/ai/* rate cap covers them too.
+app.route('/api/ai', aiToolsRoutes)
+
 // Billing (writes) — Stripe checkout / portal (auth-gated) + webhook (signature-verified).
 app.route('/api/stripe', stripeRoutes)
+
+// Native IAP — RevenueCat server-to-server webhook (header-auth, no org middleware). Apple/Play
+// purchases write per-provider subscription rows that resolveOrgEntitlement collapses with Stripe.
+app.route('/api/revenuecat', revenuecatRoutes)
 
 // Billing (reads) — subscription summary for the client's subscription hook.
 app.route('/api/billing', billingRoutes)
@@ -249,8 +316,39 @@ app.route('/api/organizations', mealRoutes)
 // Public user profiles — session-gated, safe fields only.
 app.route('/api/users', usersRoutes)
 
-// Config reporter for the Criterial admin (declared ENV keys + per-key hasValue).
-app.route('/api/admin/config', adminConfigRoutes)
+// ── 2026-07-05 harvest modules (feature-gated at mount; each route ALSO guards internally) ──
+// Criterial config reporter — ALWAYS mounted; dormant (401) until ADMIN_METRICS_TOKEN is set.
+app.route('/api/admin', adminConfigRoutes)
+// Org settings/delete — UNGATED (core, not feature-flagged): the capability-gated rename/delete
+// path custom-vocabulary kinds need (PATCH/DELETE /api/orgs/settings — active-org, no :orgId).
+app.route('/api/orgs', orgSettingsRoutes)
+if (APP_CONFIG.features.subjects) app.route('/api/organizations', subjectRoutes)
+if (APP_CONFIG.features.oversight) app.route('/api/organizations', oversightRoutes)
+if (APP_CONFIG.features.shareGrants) {
+  app.route('/api/organizations', grantRoutes)
+  // Public by design — the code is the credential; mounted OUTSIDE /api/organizations so it
+  // bypasses requireOrg (pet-pilot pattern; header comment in the route file explains).
+  app.route('/api/grant', grantPublicRoutes)
+}
+if (APP_CONFIG.features.escalations) app.route('/api/organizations', escalationRoutes)
+if (APP_CONFIG.features.prompts) app.route('/api/organizations', promptRoutes)
+if (APP_CONFIG.features.reports) app.route('/api/organizations', generatedReportRoutes)
+if (APP_CONFIG.features.catalog) app.route('/api/organizations', catalogRoutes)
+if (APP_CONFIG.features.export) app.route('/api/organizations', exportRoutes)
+
+// Public share links — anonymous token resolve (NO auth) + org-scoped mint/revoke. The token is
+// the capability; the public resolve returns only the entity reference (worker/lib/share-token.ts).
+app.route('/api/share', publicShareRoutes)
+app.route('/api/organizations', shareRoutes)
+
+// Realtime — WebSocket upgrade fronting the RealtimeRoom Durable Object (opt-in; answers 503 until
+// REALTIME_ROOM is bound in wrangler.toml). The RealtimeRoom class is re-exported at the bottom.
+app.route('/api/realtime', realtimeRoutes)
+
+// Integrations — generic third-party OAuth connect/list/disconnect (user-scoped). The provider
+// CATALOG is per-app + EMPTY by default (src/lib/config/integrations.ts), so until a mint fills it
+// the list is empty + authorize 404s. Tokens are stored encrypted; the flow is CSRF-protected.
+app.route('/api/integrations', integrationsRoutes)
 
 // Referrals — user-scoped create/redeem/list (codes are cross-org by design).
 app.route('/api/referrals', referralRoutes)
@@ -283,3 +381,8 @@ export default {
   },
   scheduled,
 } satisfies ExportedHandler<Env>
+
+// Realtime Durable Object — always exported so the class is available; ACTIVATED by binding it in
+// wrangler.toml ([[durable_objects.bindings]] REALTIME_ROOM + [[migrations]]). Exporting an unbound
+// DO class is inert, so this stays opt-in with zero cost until a mint enables realtime.
+export { RealtimeRoom } from './realtime/realtime-room'

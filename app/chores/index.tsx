@@ -23,7 +23,7 @@ import type { Chore, ChoreCategory } from '@/lib/db/schema'
 /**
  * Chore Library — the searchable/filterable list of a household's chore templates (pairs with
  * app/chores/new.tsx + app/chores/[id].tsx and useChores.ts). Mode-aware: reads are open to every
- * member, but the create affordance (FAB + empty-state CTA) is gated on can('createChores') so kids
+ * member, but the create affordance (FAB + empty-state CTA) is gated on can('chore:create') so kids
  * see a read-only library. Filter by category, search by name; tap a row for the detail screen.
  */
 
@@ -97,7 +97,7 @@ export default function ChoresScreen() {
   const { data: session, isPending: sessionPending } = useSession()
   const { orgId, ui, can } = useHouseholdMode()
   const display = ui?.difficultyDisplay ?? 'text'
-  const canCreate = can('createChores')
+  const canCreate = can('chore:create')
 
   const query = useChores(orgId ?? '')
   const categoriesQuery = useChoreCategories(orgId ?? '')

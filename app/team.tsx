@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { View } from 'react-native'
 import { router, Stack } from 'expo-router'
 import { Check, Mail, Users } from 'lucide-react-native'
+import { QRCode } from '@/components/native/qr-code'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
@@ -18,13 +19,16 @@ import { Section } from '@/components/gallery/kit'
 import { useToast } from '@/components/ui/toast'
 import { useColors } from '@/lib/config/theme'
 import { authClient, organization, useSession } from '@/lib/auth/client'
+import { SignedInAs } from '@/components/auth/signed-in-as'
 import { APP_CONFIG } from '@/lib/config/app'
 import { t } from '@/lib/i18n'
 
 /**
  * Team — manage the Better-Auth organization (display-aliased per app via APP_CONFIG.tenant):
  * switch the active one, create a new one, see members, and invite people (the Worker emails the
- * invite via Resend). Pushed route (Settings → Team); signed-out visitors get a sign-in prompt.
+ * invite via Resend). Each pending invite can also be shown as a QR (display-only — MINOR-13) that
+ * scans into the same /accept-invite flow, for the in-person "just scan my screen" hand-off.
+ * Pushed route (Settings → Team); signed-out visitors get a sign-in prompt.
  */
 
 const TENANT = APP_CONFIG.tenant.singular.toLowerCase()
@@ -37,6 +41,11 @@ function slugify(name: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+/** A short random suffix (e.g. "k3f9qz") to keep org slugs globally unique. */
+function shortRandom() {
+  return Math.random().toString(36).slice(2, 8)
 }
 
 function roleBadge(role: string) {
@@ -56,6 +65,52 @@ function SignedIn() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member')
   const [inviting, setInviting] = useState(false)
+  // Keyed by invitation id (cancel) or email (resend) so only the tapped row spins; one at a time.
+  const [busyInvite, setBusyInvite] = useState<string | null>(null)
+  // Which pending invite is showing its QR (one at a time — the QR is big).
+  const [qrInviteId, setQrInviteId] = useState<string | null>(null)
+
+  // Cancel a stale/wrong pending invite (frees it up so a corrected email can be invited), or
+  // resend one whose email was lost/spam-filtered. The org hook refetches its invitations.
+  const cancelInvite = async (invitationId: string) => {
+    setBusyInvite(invitationId)
+    try {
+      const res = await organization.cancelInvitation({ invitationId })
+      if (res.error) {
+        toast({
+          title: "Couldn't cancel invite",
+          description: res.error.message ?? 'Something went wrong.',
+          variant: 'error',
+        })
+      } else {
+        toast({ title: 'Invite canceled', variant: 'success' })
+      }
+    } catch {
+      toast({ title: 'Network error', description: 'Check your connection and try again.', variant: 'error' })
+    } finally {
+      setBusyInvite(null)
+    }
+  }
+
+  const resendInvite = async (email: string, role: string) => {
+    setBusyInvite(email)
+    try {
+      const res = await organization.inviteMember({ email, role: role as 'member' | 'admin', resend: true })
+      if (res.error) {
+        toast({
+          title: "Couldn't resend invite",
+          description: res.error.message ?? 'Something went wrong.',
+          variant: 'error',
+        })
+      } else {
+        toast({ title: `Invite resent to ${email}`, variant: 'success' })
+      }
+    } catch {
+      toast({ title: 'Network error', description: 'Check your connection and try again.', variant: 'error' })
+    } finally {
+      setBusyInvite(null)
+    }
+  }
 
   const switchOrg = async (id: string) => {
     if (id === activeOrg?.id || switchingId) return
@@ -82,13 +137,16 @@ function SignedIn() {
 
   const createOrg = async () => {
     const name = createName.trim()
-    const slug = slugify(name)
-    if (!name || !slug) {
+    if (!name || !slugify(name)) {
       toast({ title: `Enter a ${TENANT} name`, variant: 'error' })
       return
     }
     setCreating(true)
     try {
+      // Globally-unique slug (Better-Auth requires it) — the typed name is kept verbatim. The slug
+      // never appears in a URL (invites use the org id), so a random suffix is safe and avoids the
+      // collision two ${TENANTS} with the same name would otherwise hit.
+      const slug = `${slugify(name)}-${shortRandom()}`
       const res = await organization.create({ name, slug })
       if (res.error || !res.data) {
         toast({
@@ -152,6 +210,10 @@ function SignedIn() {
 
   return (
     <>
+      {/* Who you're signed in as — so a no-org user who signed into the WRONG account sees it (and
+          can bail out) instead of dead-ending on "create your first one". */}
+      <SignedInAs />
+
       <Section title={APP_CONFIG.tenant.plural} description="Tap one to make it active.">
         {orgsPending ? (
           <View className="items-center py-6">
@@ -231,13 +293,59 @@ function SignedIn() {
                 <Text variant="caption">Pending invites</Text>
                 <List>
                   {pendingInvites.map((inv) => (
-                    <ListItem
-                      key={inv.id}
-                      title={inv.email}
-                      subtitle={`Invited as ${String(inv.role)}`}
-                      left={<Mail color={colors.mutedForeground} size={18} />}
-                      right={<Badge variant="outline" label="pending" />}
-                    />
+                    <Fragment key={inv.id}>
+                      <ListItem
+                        title={inv.email}
+                        subtitle={`Invited as ${String(inv.role)} · pending`}
+                        left={<Mail color={colors.mutedForeground} size={18} />}
+                        right={
+                          <View className="flex-row items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              label={qrInviteId === inv.id ? t('onboarding.hideQr') : t('onboarding.showQr')}
+                              disabled={busyInvite !== null}
+                              onPress={() => setQrInviteId(qrInviteId === inv.id ? null : inv.id)}
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              label="Resend"
+                              loading={busyInvite === inv.email}
+                              disabled={busyInvite !== null}
+                              onPress={() => resendInvite(inv.email, String(inv.role))}
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              label="Cancel"
+                              loading={busyInvite === inv.id}
+                              disabled={busyInvite !== null}
+                              onPress={() => cancelInvite(inv.id)}
+                            />
+                          </View>
+                        }
+                      />
+                      {/* QR affordance (ManyHandz pattern, display-only — MINOR-13: no camera
+                          scanner in the chassis): the invite link as a scannable QR, beside the
+                          email invite. Scanning opens the SAME /accept-invite/[id] flow the email
+                          lands on, and the code below the QR can be typed into the onboarding
+                          screen's Join tab for devices that can't scan. */}
+                      {qrInviteId === inv.id ? (
+                        <View className="items-center gap-2 py-4">
+                          {/* QRCode self-aligns start; a centering row keeps it in the middle. */}
+                          <View className="flex-row justify-center">
+                            <QRCode value={`${APP_CONFIG.url}/accept-invite/${inv.id}`} size={180} />
+                          </View>
+                          <Text variant="caption" className="text-center">
+                            {t('onboarding.qrHint')}
+                          </Text>
+                          <Text variant="caption" selectable className="text-center">
+                            {inv.id}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </Fragment>
                   ))}
                 </List>
               </View>
@@ -288,7 +396,7 @@ export default function TeamScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: APP_CONFIG.tenant.plural }} />
+      <Stack.Screen options={{ headerShown: true, title: APP_CONFIG.tenant.singular }} />
       <PageWrapper className="gap-8 pb-24">
         {isPending ? (
           <View className="items-center py-24">

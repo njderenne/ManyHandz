@@ -3,8 +3,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { can } from '@/lib/config/modes'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 
 /**
  * Settle-Up ledger — the who-owes-whom record for BOTH money and non-money obligations (treat / gift
@@ -26,7 +26,7 @@ import { resolveHousehold, type HouseholdEnv } from '../household'
  *   POST /api/organizations/:orgId/settlements/:id/settle             → debtor marks settled
  *   POST /api/organizations/:orgId/settlements/:id/forgive            → creditor or parent forgives
  */
-export const settlementRoutes = new Hono<HouseholdEnv>()
+export const settlementRoutes = new Hono<AuthEnv>()
 
 const PAYOUT_TYPES = ['money', 'treat', 'gift', 'privilege', 'experience', 'custom'] as const
 const SETTLED_VIA = ['venmo', 'paypal', 'cashapp', 'apple_cash', 'cash', 'in_person', 'other'] as const
@@ -51,7 +51,7 @@ const settlementSelect = {
 }
 
 /** Confirm a member id belongs to this household. Returns false on a foreign / missing id. */
-async function memberOk(env: HouseholdEnv['Bindings'], orgId: string, memberId: string): Promise<boolean> {
+async function memberOk(env: AuthEnv['Bindings'], orgId: string, memberId: string): Promise<boolean> {
   const [m] = await getDb(env.DATABASE_URL)
     .select({ id: schema.member.id })
     .from(schema.member)
@@ -150,7 +150,7 @@ const createInput = z
   })
 
 settlementRoutes.post('/:orgId/settlements', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   // Family mode: only a parent may file a settlement (a kid can't invent an obligation). Roommate /
   // office: any member may create an IOU / promise.
@@ -165,7 +165,7 @@ settlementRoutes.post('/:orgId/settlements', requireOrg, async (c) => {
   const fromMemberId = d.fromMemberId ?? ctx.memberId
   // Filing a debt against SOMEONE ELSE is an admin action. (Family already blocks non-parents above
   // and roommates are all peers; this defends the on-behalf path for non-admin roles in other modes.)
-  if (d.fromMemberId && d.fromMemberId !== ctx.memberId && !can(ctx.mode, ctx.householdRole, 'changeRoles')) {
+  if (d.fromMemberId && d.fromMemberId !== ctx.memberId && !can(ctx.mode, ctx.householdRole, 'member:set_role')) {
     return c.json({ error: 'forbidden — only an admin can file on another member’s behalf' }, 403)
   }
   if (fromMemberId === d.toMemberId) return c.json({ error: 'a member cannot owe themselves' }, 400)
@@ -200,7 +200,7 @@ settlementRoutes.post('/:orgId/settlements', requireOrg, async (c) => {
 })
 
 /** Load a settlement scoped to the org (the from/to members are needed for the actor checks). */
-async function loadSettlement(env: HouseholdEnv['Bindings'], orgId: string, id: string) {
+async function loadSettlement(env: AuthEnv['Bindings'], orgId: string, id: string) {
   const [row] = await getDb(env.DATABASE_URL)
     .select({
       id: schema.settlement.id,
@@ -221,7 +221,7 @@ const settleInput = z.object({
 })
 
 settlementRoutes.post('/:orgId/settlements/:id/settle', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const parsed = settleInput.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -263,7 +263,7 @@ settlementRoutes.post('/:orgId/settlements/:id/settle', requireOrg, async (c) =>
 const forgiveInput = z.object({ settledNote: z.string().trim().max(300).nullish() })
 
 settlementRoutes.post('/:orgId/settlements/:id/forgive', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const parsed = forgiveInput.safeParse(await c.req.json().catch(() => ({})))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)

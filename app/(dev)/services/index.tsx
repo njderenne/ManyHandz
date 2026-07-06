@@ -8,6 +8,7 @@ import {
   BellRing,
   Gift,
   CreditCard,
+  FileText,
 } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
@@ -26,6 +27,7 @@ const SERVICES: HubItem[] = [
   { title: 'Sounds', description: 'Standard UI sounds (assets/sounds)', icon: Volume2, route: '/services/sounds' },
   { title: 'Push', description: 'Register this device, then send a test push', icon: BellRing, route: '/services/push' },
   { title: 'Referrals', description: 'Shareable code via the native share sheet', icon: Gift, route: '/services/referrals' },
+  { title: 'PDF export', description: 'Tamper-evident report → PDF on device', icon: FileText, route: '/services/pdf' },
   { title: 'Email & Billing', description: 'Resend + Stripe, wired server-side', icon: CreditCard, route: '/services/billing' },
 ]
 

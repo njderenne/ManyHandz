@@ -38,7 +38,7 @@ import type { Competition } from '@/lib/db/schema'
  * Competitions — head-to-head challenges. Active / Pending / Past tabs, a "VS" card per matchup
  * (two avatars, live challenger-vs-opponent scores, a countdown), and a gated create flow. The
  * whole screen is behind the `headToHead` feature flag; creating is additionally gated on
- * `can('createCompetitions')` (kids also need the household toggle + a stakes cap). The opponent of
+ * `can('competition:create')` (kids also need the household toggle + a stakes cap). The opponent of
  * a pending challenge can accept or decline it.
  */
 
@@ -327,7 +327,7 @@ export default function CompetitionsScreen() {
   const decline = useDeclineCompetition(orgId ?? '')
 
   const featureOff = ready && !features?.headToHead
-  const canCreate = can('createCompetitions')
+  const canCreate = can('competition:create')
   // Kids are capped by the household policy; everyone else can wager up to their own balance.
   const viewerPoints = members.data?.find((m) => m.memberId === viewerId)?.pointsBalance ?? 0
   const isKid = mode === 'family' && role === 'kid'

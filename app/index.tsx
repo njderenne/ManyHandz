@@ -143,8 +143,8 @@ export default function Dashboard() {
   //  - admin view = can approve completions (the family parent): approval queue + FAB.
   //  - kid view   = gamification on but no admin powers (restricted family member): level hero + goals.
   //  - peer view  = no gamification (roommate/office): fairness mini-widget + clean cards.
-  const isAdminView = can('approveCompletions')
-  const isKidView = features.gamification && !isAdminView && !can('createChores')
+  const isAdminView = can('completion:approve')
+  const isKidView = features.gamification && !isAdminView && !can('chore:create')
   const showPoints = features.gamification
 
   const dueList = (dueToday.data ?? []).filter((a) => a.status !== 'completed' && a.status !== 'approved')
@@ -154,7 +154,7 @@ export default function Dashboard() {
   const points = computePoints(members.data)
 
   const onDone = (a: AssignmentWithChore) => {
-    if (!can('markOwnComplete')) {
+    if (!can('completion:mark_own')) {
       toast({ title: "You can't complete chores", variant: 'error' })
       return
     }
@@ -242,7 +242,7 @@ export default function Dashboard() {
                 key={a.id}
                 assignment={a}
                 stars={ui.difficultyDisplay === 'stars'}
-                canComplete={can('markOwnComplete')}
+                canComplete={can('completion:mark_own')}
                 completing={complete.isPending}
                 onDone={() => onDone(a)}
               />
@@ -261,7 +261,7 @@ export default function Dashboard() {
                 assignment={a}
                 overdue
                 stars={ui.difficultyDisplay === 'stars'}
-                canComplete={can('markOwnComplete')}
+                canComplete={can('completion:mark_own')}
                 completing={complete.isPending}
                 onDone={() => onDone(a)}
               />
@@ -274,7 +274,7 @@ export default function Dashboard() {
       <QuickLinks
         showSettleUp={features.paymentHandles}
         showReports={features.weeklyReportCard}
-        canSettings={can('editHouseholdSettings')}
+        canSettings={can('org:settings')}
       />
 
       {/* Activity feed */}
@@ -299,7 +299,7 @@ export default function Dashboard() {
 
       {/* PARENT / ROOMMATE FAB → new chore. Sibling of PageWrapper (OUTSIDE the page's ScrollView)
           so it pins to the screen's bottom-right instead of scrolling away with the content. */}
-      {can('createChores') ? (
+      {can('chore:create') ? (
         <FAB icon={Plus} accessibilityLabel="New chore" onPress={() => router.push('/chores/new' as Href)} />
       ) : null}
     </>

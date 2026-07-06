@@ -141,8 +141,8 @@ export default function AssignmentDetailScreen() {
               assigneeStreak={assignee?.currentStreak ?? 0}
               features={features!}
               ui={ui!}
-              canComplete={can('markOwnComplete')}
-              canPhoto={can('submitPhotoProof')}
+              canComplete={can('completion:mark_own')}
+              canPhoto={can('completion:submit_proof')}
               requirePhotoProof={household?.requirePhotoProof ?? false}
               update={update}
               complete={complete}

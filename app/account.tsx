@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Alert, Platform, View } from 'react-native'
+import { View } from 'react-native'
 import { router, Stack } from 'expo-router'
-import { LogOut, MonitorSmartphone, UserRound } from 'lucide-react-native'
+import { FileDown, LogOut, MonitorSmartphone, Printer, UserRound } from 'lucide-react-native'
 import { PageWrapper } from '@/components/layout/page-wrapper'
 import { Text } from '@/components/ui/text'
 import { Button } from '@/components/ui/button'
@@ -13,10 +13,12 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
 import { Section } from '@/components/gallery/kit'
 import { useToast } from '@/components/ui/toast'
+import { useConfirm } from '@/components/ui/confirm'
 import { authClient, signOut, useSession } from '@/lib/auth/client'
 // Aliased — this screen has a local `signOutEverywhere` handler (revoke OTHER sessions).
 import { signOutEverywhere as performSignOut } from '@/lib/auth/sign-out'
 import { purgeQueryCache } from '@/lib/query/client'
+import { useExportData } from '@/lib/query/hooks/useExport'
 import { APP_CONFIG } from '@/lib/config/app'
 import { t } from '@/lib/i18n'
 
@@ -25,25 +27,67 @@ import { t } from '@/lib/i18n'
  * Pushed route (Settings → Account). Signed-out visitors get a friendly sign-in prompt instead.
  */
 
-/** Native confirm dialog; RN Web's Alert is a no-op, so the web build falls back to window.confirm. */
-function confirmDestructive(
-  title: string,
-  message: string,
-  onConfirm: () => void,
-  confirmLabel = 'Delete',
-) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm()
-    return
+/**
+ * "Export my data" — the org data-ownership row (worker/routes/export.ts): the complete JSON
+ * document, per-entity CSVs, or a print-ready report. FREE on every plan, forever (the export is
+ * never tier-gated — server law); it IS capability-gated server-side (org:export → owner/admin),
+ * so a member tapping it gets an honest 403 toast. Hidden entirely when the app turns the
+ * feature off. Renders only with an active org — the export is the ORG's archive, not the user's.
+ */
+function ExportSection() {
+  const { toast } = useToast()
+  const { data: activeOrg } = authClient.useActiveOrganization()
+  const orgId = activeOrg?.id ?? ''
+  const { exportJson, exportCsv, exportPrint, exporting } = useExportData(orgId)
+
+  if (!APP_CONFIG.features.export || !orgId) return null
+
+  const run = async (fn: () => Promise<void>) => {
+    try {
+      await fn()
+      toast({ title: t('export.ready'), variant: 'success' })
+    } catch (e) {
+      toast({
+        title: t('export.failed'),
+        description: e instanceof Error ? e.message : undefined,
+        variant: 'error',
+      })
+    }
   }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
-  ])
+
+  return (
+    <Section title={t('export.title')}>
+      <View className="gap-3">
+        <Text variant="muted">{t('export.row')}</Text>
+        <Button
+          variant="outline"
+          icon={FileDown}
+          label={t('export.json')}
+          loading={exporting === 'json'}
+          onPress={() => run(exportJson)}
+        />
+        <Button
+          variant="outline"
+          icon={FileDown}
+          label={t('export.csv')}
+          loading={exporting === 'csv'}
+          onPress={() => run(exportCsv)}
+        />
+        <Button
+          variant="outline"
+          icon={Printer}
+          label={t('export.print')}
+          loading={exporting === 'print'}
+          onPress={() => run(exportPrint)}
+        />
+      </View>
+    </Section>
+  )
 }
 
 function SignedIn({ user }: { user: { name: string; email: string; image?: string | null } }) {
   const { toast } = useToast()
+  const confirm = useConfirm()
 
   const [name, setName] = useState(user.name)
   const [savingName, setSavingName] = useState(false)
@@ -188,74 +232,73 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
     }
   }
 
-  const signOutEverywhere = () => {
-    confirmDestructive(
-      'Sign out everywhere?',
-      'This signs out every other device and browser. This session stays signed in.',
-      async () => {
-        setRevokingOthers(true)
-        try {
-          // Verified against better-auth: revokeOtherSessions revokes all sessions EXCEPT the
-          // current one (revokeSessions would kill this one too — wrong UX here).
-          const res = await authClient.revokeOtherSessions()
-          if (res.error) {
-            toast({
-              title: "Couldn't sign out other devices",
-              description: res.error.message ?? 'The server rejected the request.',
-              variant: 'error',
-            })
-          } else {
-            toast({ title: 'Signed out everywhere else', variant: 'success' })
-          }
-        } catch {
-          toast({
-            title: 'Network error',
-            description: 'Check your connection and try again.',
-            variant: 'error',
-          })
-        } finally {
-          setRevokingOthers(false)
-        }
-      },
-      'Sign out',
-    )
+  const signOutEverywhere = async () => {
+    const ok = await confirm({
+      title: 'Sign out everywhere?',
+      message: 'This signs out every other device and browser. This session stays signed in.',
+      confirmLabel: 'Sign out',
+      destructive: true,
+    })
+    if (!ok) return
+    setRevokingOthers(true)
+    try {
+      // Verified against better-auth: revokeOtherSessions revokes all sessions EXCEPT the
+      // current one (revokeSessions would kill this one too — wrong UX here).
+      const res = await authClient.revokeOtherSessions()
+      if (res.error) {
+        toast({
+          title: "Couldn't sign out other devices",
+          description: res.error.message ?? 'The server rejected the request.',
+          variant: 'error',
+        })
+      } else {
+        toast({ title: 'Signed out everywhere else', variant: 'success' })
+      }
+    } catch {
+      toast({
+        title: 'Network error',
+        description: 'Check your connection and try again.',
+        variant: 'error',
+      })
+    } finally {
+      setRevokingOthers(false)
+    }
   }
 
-  const deleteAccount = () => {
-    confirmDestructive(
-      'Delete account?',
-      'This permanently deletes your account and all of its data. This cannot be undone.',
-      async () => {
-        setDeleting(true)
-        try {
-          const res = await authClient.deleteUser(
-            deletePassword ? { password: deletePassword } : {},
-          )
-          if (res.error) {
-            // Surface the server's reason verbatim (e.g. deletion disabled, wrong password,
-            // session not fresh) — the chassis never pretends a delete happened.
-            toast({
-              title: "Couldn't delete account",
-              description: res.error.message ?? 'The server rejected the request.',
-              variant: 'error',
-            })
-          } else {
-            await signOut().catch(() => {}) // clear the local token; the server already revoked sessions
-            await purgeQueryCache() // drop this user's cached data before the next account signs in
-            toast({ title: 'Account deleted', variant: 'success' })
-            router.replace('/')
-          }
-        } catch {
-          toast({
-            title: 'Network error',
-            description: 'Check your connection and try again.',
-            variant: 'error',
-          })
-        } finally {
-          setDeleting(false)
-        }
-      },
-    )
+  const deleteAccount = async () => {
+    const ok = await confirm({
+      title: 'Delete account?',
+      message: 'This permanently deletes your account and all of its data. This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    setDeleting(true)
+    try {
+      const res = await authClient.deleteUser(deletePassword ? { password: deletePassword } : {})
+      if (res.error) {
+        // Surface the server's reason verbatim (e.g. deletion disabled, wrong password,
+        // session not fresh) — the chassis never pretends a delete happened.
+        toast({
+          title: "Couldn't delete account",
+          description: res.error.message ?? 'The server rejected the request.',
+          variant: 'error',
+        })
+      } else {
+        await signOut().catch(() => {}) // clear the local token; the server already revoked sessions
+        await purgeQueryCache() // drop this user's cached data before the next account signs in
+        toast({ title: 'Account deleted', variant: 'success' })
+        router.replace('/')
+      }
+    } catch {
+      toast({
+        title: 'Network error',
+        description: 'Check your connection and try again.',
+        variant: 'error',
+      })
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -366,6 +409,8 @@ function SignedIn({ user }: { user: { name: string; email: string; image?: strin
           </Text>
         </View>
       </Section>
+
+      <ExportSection />
 
       <Section title="Danger zone">
         <Card className="border-destructive/40">

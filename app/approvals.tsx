@@ -30,7 +30,7 @@ import { iconFor } from '@/lib/manyhandz/icons'
  * kid) or Rejects with a required reason (sends the chore back to in_progress).
  *
  * Mode-aware: the whole queue is gated on `features.approvalWorkflow` (roommate/office are honor-system
- * and never reach here), and each write affordance is gated on `can('approveCompletions')` so a kid
+ * and never reach here), and each write affordance is gated on `can('completion:approve')` so a kid
  * who somehow lands here can look but not act — the Worker enforces the real check.
  */
 
@@ -179,7 +179,7 @@ export default function ApprovalsScreen() {
   const approve = useApproveCompletion(orgId ?? '')
   const reject = useRejectCompletion(orgId ?? '')
 
-  const canApprove = can('approveCompletions')
+  const canApprove = can('completion:approve')
   const [rejecting, setRejecting] = useState<PendingCompletion | null>(null)
   const [reason, setReason] = useState('')
   /** Tracks which completion has an in-flight mutation so only its buttons spin. */

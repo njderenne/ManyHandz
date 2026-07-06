@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 
 /**
  * Shared shopping / supply lists — a breadth ManyHandz resource (brief §"Shared Shopping"). Every
@@ -25,7 +25,7 @@ import { resolveHousehold, type HouseholdEnv } from '../household'
  *   PATCH  /api/organizations/:orgId/shopping-lists/:listId/items/:itemId   → edit / check-off
  *   DELETE /api/organizations/:orgId/shopping-lists/:listId/items/:itemId   → remove an item
  */
-export const shoppingRoutes = new Hono<HouseholdEnv>()
+export const shoppingRoutes = new Hono<AuthEnv>()
 
 /** The 13 categories an item can land in (TEXT column; quick-add keyword-maps into these). */
 export const SHOPPING_CATEGORIES = [
@@ -181,7 +181,7 @@ shoppingRoutes.get('/:orgId/shopping-lists', requireOrg, async (c) => {
 })
 
 shoppingRoutes.post('/:orgId/shopping-lists', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const parsed = listCreate.safeParse(await c.req.json().catch(() => ({})))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -202,7 +202,7 @@ shoppingRoutes.post('/:orgId/shopping-lists', requireOrg, async (c) => {
 })
 
 shoppingRoutes.patch('/:orgId/shopping-lists/:listId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const listId = c.req.param('listId')
   const parsed = listUpdate.safeParse(await c.req.json().catch(() => null))
@@ -227,7 +227,7 @@ shoppingRoutes.patch('/:orgId/shopping-lists/:listId', requireOrg, async (c) => 
 })
 
 shoppingRoutes.delete('/:orgId/shopping-lists/:listId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const listId = c.req.param('listId')
   const [row] = await getDb(c.env.DATABASE_URL)
@@ -266,7 +266,7 @@ const itemUpdate = z.object({
 })
 
 /** Confirm a list exists in this household (or 404). Returns the list id or null. */
-async function listInOrg(env: HouseholdEnv['Bindings'], orgId: string, listId: string): Promise<string | null> {
+async function listInOrg(env: AuthEnv['Bindings'], orgId: string, listId: string): Promise<string | null> {
   const [row] = await getDb(env.DATABASE_URL)
     .select({ id: schema.shoppingList.id })
     .from(schema.shoppingList)
@@ -276,7 +276,7 @@ async function listInOrg(env: HouseholdEnv['Bindings'], orgId: string, listId: s
 }
 
 /** Confirm a member belongs to this household (assignee guard). */
-async function memberInOrg(env: HouseholdEnv['Bindings'], orgId: string, memberId: string): Promise<boolean> {
+async function memberInOrg(env: AuthEnv['Bindings'], orgId: string, memberId: string): Promise<boolean> {
   const [row] = await getDb(env.DATABASE_URL)
     .select({ id: schema.member.id })
     .from(schema.member)
@@ -298,7 +298,7 @@ shoppingRoutes.get('/:orgId/shopping-lists/:listId/items', requireOrg, async (c)
 })
 
 shoppingRoutes.post('/:orgId/shopping-lists/:listId/items', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const listId = c.req.param('listId')
   if (!(await listInOrg(c.env, ctx.orgId, listId))) return c.json({ error: 'not found' }, 404)
@@ -331,7 +331,7 @@ shoppingRoutes.post('/:orgId/shopping-lists/:listId/items', requireOrg, async (c
 })
 
 shoppingRoutes.patch('/:orgId/shopping-lists/:listId/items/:itemId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const listId = c.req.param('listId')
   const itemId = c.req.param('itemId')
@@ -377,7 +377,7 @@ shoppingRoutes.patch('/:orgId/shopping-lists/:listId/items/:itemId', requireOrg,
 })
 
 shoppingRoutes.delete('/:orgId/shopping-lists/:listId/items/:itemId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const listId = c.req.param('listId')
   const itemId = c.req.param('itemId')

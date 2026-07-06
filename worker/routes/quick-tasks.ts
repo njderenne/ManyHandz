@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 
 /**
  * Quick tasks — lightweight one-off to-dos. Deliberately OUTSIDE the points/gamification system:
@@ -22,7 +22,7 @@ import { resolveHousehold, type HouseholdEnv } from '../household'
  *   POST   /api/organizations/:orgId/quick-tasks/:taskId/reopen    → un-complete
  *   DELETE /api/organizations/:orgId/quick-tasks/:taskId      → delete
  */
-export const quickTaskRoutes = new Hono<HouseholdEnv>()
+export const quickTaskRoutes = new Hono<AuthEnv>()
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
 const timeString = z.string().regex(/^\d{2}:\d{2}$/, 'expected HH:MM')
@@ -38,7 +38,7 @@ const quickTaskUpdate = quickTaskCreate.partial()
 
 /** Confirm an assignee member belongs to this household (or is cleared). Returns false on a foreign id. */
 async function assigneeOk(
-  env: HouseholdEnv['Bindings'],
+  env: AuthEnv['Bindings'],
   orgId: string,
   memberId: string | null | undefined,
 ): Promise<boolean> {
@@ -62,7 +62,7 @@ quickTaskRoutes.get('/:orgId/quick-tasks', requireOrg, async (c) => {
 })
 
 quickTaskRoutes.post('/:orgId/quick-tasks', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const parsed = quickTaskCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -88,7 +88,7 @@ quickTaskRoutes.post('/:orgId/quick-tasks', requireOrg, async (c) => {
 })
 
 quickTaskRoutes.patch('/:orgId/quick-tasks/:taskId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const taskId = c.req.param('taskId')
   const parsed = quickTaskUpdate.safeParse(await c.req.json().catch(() => null))
@@ -118,7 +118,7 @@ quickTaskRoutes.patch('/:orgId/quick-tasks/:taskId', requireOrg, async (c) => {
 })
 
 quickTaskRoutes.post('/:orgId/quick-tasks/:taskId/complete', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const taskId = c.req.param('taskId')
   // Single-tap complete — credit goes to whoever tapped. Idempotent: only flips an open task.
@@ -139,7 +139,7 @@ quickTaskRoutes.post('/:orgId/quick-tasks/:taskId/complete', requireOrg, async (
 })
 
 quickTaskRoutes.post('/:orgId/quick-tasks/:taskId/reopen', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const taskId = c.req.param('taskId')
   // Un-complete: clear the completion fields. Idempotent: only flips a completed task.
@@ -160,7 +160,7 @@ quickTaskRoutes.post('/:orgId/quick-tasks/:taskId/reopen', requireOrg, async (c)
 })
 
 quickTaskRoutes.delete('/:orgId/quick-tasks/:taskId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const taskId = c.req.param('taskId')
   const [row] = await getDb(c.env.DATABASE_URL)

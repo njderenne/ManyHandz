@@ -45,7 +45,7 @@ import type { Announcement } from '@/lib/db/schema'
 
 /**
  * Polls & Notices — two sections (Polls / Announcements) the whole household can read; writing is
- * gated on `can('editHouseholdSettings')` (parents in Family, any roommate in Roommate — never kids),
+ * gated on `can('org:settings')` (parents in Family, any roommate in Roommate — never kids),
  * mirroring the Worker. Polls are voteable cards with live result bars (vote toggles via useVotePoll,
  * respecting allowMultiple + isAnonymous, and lock when isClosed / closesAt passes). Announcements are
  * pinned notices with a priority accent; admins create and un-pin (soft-delete) them. Pushed route;
@@ -429,7 +429,7 @@ export default function PollsScreen() {
   const noticesQuery = useAnnouncements(orgId ?? '')
   const query = section === 'polls' ? pollsQuery : noticesQuery
   // Writes for both surfaces share the admin permission (the Worker gates on editHouseholdSettings).
-  const canManage = can('editHouseholdSettings')
+  const canManage = can('org:settings')
 
   // No active household → nudge to onboarding (mirrors the shape used across the app).
   if (!orgId && !isLoading) {

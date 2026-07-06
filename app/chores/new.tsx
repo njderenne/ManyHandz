@@ -28,7 +28,7 @@ import { uploadMedia, MediaNotConfiguredError } from '@/lib/media/upload'
 /**
  * New chore — the create form (pairs with the list at app/chores/index.tsx and the detail/edit at
  * app/chores/[id].tsx). A FORM route: the last path segment is `new`, so the product nav auto-hides
- * (isNavHidden). Gated on can('createChores') — a member without the permission gets a friendly
+ * (isNavHidden). Gated on can('chore:create') — a member without the permission gets a friendly
  * block instead of the form. Difficulty renders as stars or Easy/Medium/Hard per ui.difficultyDisplay,
  * the AI-verification toggle only shows when features.aiVerification is on. The same field block is
  * reused by the detail screen's edit mode; extract a shared <ChoreForm> at the third usage.
@@ -43,7 +43,7 @@ export default function NewChoreScreen() {
   const createChore = useCreateChore(orgId ?? '')
   const categoriesQuery = useChoreCategories(orgId ?? '')
 
-  const canCreate = can('createChores')
+  const canCreate = can('chore:create')
   const showStars = ui?.difficultyDisplay === 'stars'
   const showAi = features?.aiVerification ?? false
 

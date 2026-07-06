@@ -2,9 +2,9 @@ import { Hono } from 'hono'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg } from '../middleware/org'
+import { requireOrg, type AuthEnv } from '../middleware/org'
 import { requireTier } from '../entitlements'
-import { type HouseholdEnv } from '../household'
+
 
 /**
  * Weekly reports — the read side of the generate-reports cron. The cron (NOT this route) writes one
@@ -17,7 +17,7 @@ import { type HouseholdEnv } from '../household'
  *
  * report_data / ai_suggestions are jsonb — typed loosely (the cron owns their shape).
  */
-export const reportRoutes = new Hono<HouseholdEnv>()
+export const reportRoutes = new Hono<AuthEnv>()
 
 /** How many weeks of history the Report Card screen scrolls through. */
 const HISTORY_LIMIT = 12

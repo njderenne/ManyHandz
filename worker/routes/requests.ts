@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { can } from '@/lib/config/modes'
 import { compareDate, shiftDate } from '@/lib/manyhandz/dates'
 
@@ -31,7 +31,7 @@ import { compareDate, shiftDate } from '@/lib/manyhandz/dates'
  *   POST /api/organizations/:orgId/swap-requests/:id/accept          → accept (target member)
  *   POST /api/organizations/:orgId/swap-requests/:id/decline         → decline (target member)
  */
-export const requestRoutes = new Hono<HouseholdEnv>()
+export const requestRoutes = new Hono<AuthEnv>()
 
 const MAX_SNOOZES = 3
 const MAX_DAYS_PAST_ORIGINAL = 7
@@ -54,8 +54,8 @@ const denyInput = z.object({ reason: z.string().trim().min(1).max(300) })
 // --- SNOOZE -------------------------------------------------------------------------------------
 
 requestRoutes.post('/:orgId/assignments/:assignmentId/snooze', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'markOwnComplete')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:mark_own')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const assignmentId = c.req.param('assignmentId')
 
@@ -85,7 +85,7 @@ requestRoutes.post('/:orgId/assignments/:assignmentId/snooze', requireOrg, async
 
   // The assignee snoozes their own; an admin (assignChores) may snooze on their behalf.
   const isAssignee = a.assignedToMemberId === ctx.memberId
-  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'assignChores')) return c.json({ error: 'forbidden' }, 403)
+  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'chore:assign')) return c.json({ error: 'forbidden' }, 403)
 
   // Guardrails are anchored to the ORIGINAL due date (the first snooze records it).
   const original = a.originalDueDate ?? a.dueDate
@@ -178,7 +178,7 @@ requestRoutes.get('/:orgId/snooze-requests', requireOrg, async (c) => {
 })
 
 /** Load a pending snooze request + its assignment's snooze state, scoped to the org. */
-async function loadPendingSnooze(env: HouseholdEnv['Bindings'], orgId: string, requestId: string) {
+async function loadPendingSnooze(env: AuthEnv['Bindings'], orgId: string, requestId: string) {
   const [row] = await getDb(env.DATABASE_URL)
     .select({
       id: schema.snoozeRequest.id,
@@ -198,8 +198,8 @@ async function loadPendingSnooze(env: HouseholdEnv['Bindings'], orgId: string, r
 }
 
 requestRoutes.post('/:orgId/snooze-requests/:id/approve', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:approve')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const req = await loadPendingSnooze(c.env, ctx.orgId, c.req.param('id'))
   if (!req) return c.json({ error: 'not found' }, 404)
@@ -225,8 +225,8 @@ requestRoutes.post('/:orgId/snooze-requests/:id/approve', requireOrg, async (c) 
 })
 
 requestRoutes.post('/:orgId/snooze-requests/:id/deny', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:approve')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const parsed = denyInput.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'a denial reason is required' }, 400)
@@ -251,8 +251,8 @@ requestRoutes.post('/:orgId/snooze-requests/:id/deny', requireOrg, async (c) => 
 // --- SWAP ---------------------------------------------------------------------------------------
 
 requestRoutes.post('/:orgId/swap-requests', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'markOwnComplete')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:mark_own')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const parsed = swapCreateInput.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -341,7 +341,7 @@ requestRoutes.get('/:orgId/swap-requests', requireOrg, async (c) => {
 })
 
 /** Load a pending swap + both assignments' current assignees, scoped to the org. */
-async function loadPendingSwap(env: HouseholdEnv['Bindings'], orgId: string, requestId: string) {
+async function loadPendingSwap(env: AuthEnv['Bindings'], orgId: string, requestId: string) {
   const [row] = await getDb(env.DATABASE_URL)
     .select({
       id: schema.swapRequest.id,
@@ -358,7 +358,7 @@ async function loadPendingSwap(env: HouseholdEnv['Bindings'], orgId: string, req
 }
 
 requestRoutes.post('/:orgId/swap-requests/:id/accept', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const req = await loadPendingSwap(c.env, ctx.orgId, c.req.param('id'))
@@ -388,7 +388,7 @@ requestRoutes.post('/:orgId/swap-requests/:id/accept', requireOrg, async (c) => 
 })
 
 requestRoutes.post('/:orgId/swap-requests/:id/decline', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const req = await loadPendingSwap(c.env, ctx.orgId, c.req.param('id'))

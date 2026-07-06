@@ -160,6 +160,7 @@ imageRoutes.post('/remove-bg', requireSession, async (c) => {
     return c.json({ image: `data:image/png;base64,${toBase64(buf)}` })
   } catch (e) {
     console.error('remove-bg failed:', e) // visible in `wrangler tail`
-    return c.json({ error: e instanceof Error ? e.message : 'background removal failed' }, 502)
+    // Detail stays in the log above — never echo the provider's diagnostics to the caller (info disclosure).
+    return c.json({ error: 'background removal failed' }, 502)
   }
 })

@@ -12,10 +12,12 @@ import { join, relative } from 'node:path'
  */
 const EXEMPT_FILES = new Set([
   'src/lib/config/theme.ts', // the palette itself — the one place hex values live
+  'src/components/charts/palette.ts', // chartPalette series ramps — the sanctioned chart-hex home (STAGE0 §6.5): categorical series colors are scheme-stable by design, and the Okabe-Ito CB-safe set is a fixed standard
+  'src/lib/pdf/html-report.ts', // printed PDF is a fixed light-palette document — it must NOT flip with the app theme, so print colors are hardcoded on purpose
+  'src/lib/manyhandz/accents.ts', // the member accent palette — fixed identity colors (avatar rings) that intentionally do NOT flip with the theme
   'app/(dev)/components/style.tsx', // dev gallery: previews alternative brand ramps + gradient demos
   'src/components/native/qr-code.tsx', // QR must stay dark-on-white for scan contrast
   'app/+html.tsx', // static web HTML shell: runs in Node pre-hydration, before the theme/NativeWind load — raw hex sets the anti-flash body background
-  'src/lib/manyhandz/accents.ts', // the member accent palette — fixed identity colors (avatar rings) that intentionally do NOT flip with the theme
 ])
 
 // Shadows are black in both schemes by design — a `shadowColor: '#000000'` line is allowed.

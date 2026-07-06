@@ -1,0 +1,15 @@
+{
+  "templateRepo": "njderenne/app-factory",
+  "templateDir": "template",
+  "slug": "manyhandz",
+  "seedCommit": "89abb7cdf42a9a7c64f536ec2812517218008be3",
+  "seedDate": "2026-06-19",
+  "seedConfidence": "exact",
+  "lastSyncCommit": "510927492c324bb3608f8d80c976ee2a870e9b90",
+  "lastSyncDate": "2026-06-23",
+  "knownStragglers": [
+    "284c75fe4313e67418496d0ce5b935e61d0cea28"
+  ],
+  "note": "Template lineage stamp — backfilled by app-factory builder/fleet/retro-stamp.js from builder/fleet/fleet.json; updated by mark-sync.js after each backport wave. Commit it with the app.",
+  "stampedAt": "2026-07-05T05:57:12.702Z"
+}

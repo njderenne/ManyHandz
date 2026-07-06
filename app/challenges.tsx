@@ -37,7 +37,7 @@ import type { BonusChallenge } from '@/lib/db/schema'
  * Challenges — time-boxed bonus challenges (Active / Past). Available only where
  * `features.bonusChallenges` is on (off in roommate mode → friendly empty state). Active cards show
  * a live countdown to `endsAt`, a type badge (Double Points surfaces the multiplier = pointsMultiplier
- * /10), and progress. Creating is gated on `can('createChallenges')` — a Dialog form picks the type,
+ * /10), and progress. Creating is gated on `can('challenge:create')` — a Dialog form picks the type,
  * a duration preset, and the multiplier/bonus. The cron resolves + pays out; these hooks only read +
  * create. Pushed route; the create form lives in an in-screen Dialog (single-file route).
  */
@@ -173,7 +173,7 @@ function PastChallengeCard({ challenge }: { challenge: BonusChallenge }) {
   )
 }
 
-/** The create-challenge Dialog form. Rendered only when `can('createChallenges')`. */
+/** The create-challenge Dialog form. Rendered only when `can('challenge:create')`. */
 function CreateChallengeDialog({
   orgId,
   visible,
@@ -335,7 +335,7 @@ export default function ChallengesScreen() {
     )
   }
 
-  const canCreate = can('createChallenges')
+  const canCreate = can('challenge:create')
 
   return (
     <>

@@ -10,6 +10,9 @@ export const queryKeys = {
   /** The caller's user_settings row (notification prefs, marketing consent, locale, timezone). */
   userSettings: ['user', 'settings'] as const,
 
+  /** The caller's connected third-party OAuth integrations (user-scoped, not org-scoped). */
+  integrations: ['integrations'] as const,
+
   organizations: {
     all: ['organizations'] as const,
     detail: (orgId: string) => ['organizations', orgId] as const,
@@ -33,6 +36,27 @@ export const queryKeys = {
       ['organizations', orgId, 'events', eventId] as const,
     messages: (orgId: string, channel: string) =>
       ['organizations', orgId, 'messages', channel] as const,
+    /** Subject primitive (Person ≠ Member ≠ User) — feature-gated module. */
+    subjects: (orgId: string, kind?: string) =>
+      ['organizations', orgId, 'subjects', kind ?? 'all'] as const,
+    subjectDetail: (orgId: string, subjectId: string) =>
+      ['organizations', orgId, 'subjects', 'detail', subjectId] as const,
+    /** Share-grant layer (named, scoped, time-boxed outsider access). */
+    grants: (orgId: string) => ['organizations', orgId, 'grants'] as const,
+    grantActivity: (orgId: string, grantId: string) =>
+      ['organizations', orgId, 'grants', grantId, 'activity'] as const,
+    /** Escalation ladder (safety module). */
+    escalations: (orgId: string) => ['organizations', orgId, 'escalations'] as const,
+    /** Prompt/nudge engine — subjectId omitted = the org-level track. */
+    prompts: (orgId: string, subjectId?: string) =>
+      ['organizations', orgId, 'prompts', subjectId ?? 'org'] as const,
+    /** Range-metrics report generator ('reports' is ManyHandz's weekly report — do not rename). */
+    generatedReports: (orgId: string) => ['organizations', orgId, 'generated-reports'] as const,
+    generatedReportDetail: (orgId: string, reportId: string) =>
+      ['organizations', orgId, 'generated-reports', reportId] as const,
+    /** Seeded reference catalog (global rows + org customs, one list). */
+    catalog: (orgId: string, kind?: string) =>
+      ['organizations', orgId, 'catalog', kind ?? 'all'] as const,
     /** ManyHandz — household config + the chores library + categories. */
     household: (orgId: string) => ['organizations', orgId, 'household'] as const,
     chores: (orgId: string) => ['organizations', orgId, 'chores'] as const,
@@ -79,5 +103,10 @@ export const queryKeys = {
   billing: {
     /** Org-prefixed so invalidating an organization sweeps its billing summary too. */
     summary: (orgId: string) => ['organizations', orgId, 'billing', 'summary'] as const,
+    /** Public — NOT org-scoped (prices are public; consumed pre-auth). staleTime 5 min. */
+    plans: () => ['billing', 'plans'] as const,
   },
+
+  /** Session-less public grant resolve — never org-prefixed (no org id exists client-side). */
+  publicGrant: (code: string) => ['public', 'grant', code] as const,
 } as const

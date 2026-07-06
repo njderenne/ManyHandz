@@ -28,6 +28,20 @@ export const moderationRoutes = new Hono<AuthEnv>()
 const REPORT_REASONS = ['spam', 'harassment', 'inappropriate', 'other'] as const
 type ReportReason = (typeof REPORT_REASONS)[number]
 
+/**
+ * Postgres foreign-key violation (23503), wherever the Neon HTTP driver surfaces it: directly on
+ * the error for raw driver errors, or on `cause` when Drizzle wraps it (DrizzleQueryError). Mirrors
+ * isUniqueViolation in referrals.ts. Closes the TOCTOU race where a reported/blocked user is deleted
+ * between the existence SELECT and the INSERT — the FK then rejects the INSERT, which we map back to
+ * the same clean 404 the pre-check returns instead of an opaque 500.
+ */
+function isForeignKeyViolation(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false
+  if ((e as { code?: unknown }).code === '23503') return true
+  const cause = (e as { cause?: unknown }).cause
+  return typeof cause === 'object' && cause !== null && (cause as { code?: unknown }).code === '23503'
+}
+
 moderationRoutes.post('/:orgId/reports', requireOrg, async (c) => {
   const session = c.get('session')
   const orgId = c.get('orgId')
@@ -85,19 +99,30 @@ moderationRoutes.post('/:orgId/reports', requireOrg, async (c) => {
     if (!target) return c.json({ error: 'reported user not found' }, 404)
   }
 
-  const [row] = await db
-    .insert(schema.report)
-    .values({
-      organizationId: orgId,
-      // Reporter comes from the SESSION, never the body — golden rule 4.
-      reporterUserId: session.user.id,
-      entityType: entityType?.trim() || null,
-      entityId: entityId?.trim() || null,
-      reportedUserId: reportedId,
-      reason,
-      details: details?.trim().slice(0, 2000) || null,
-    })
-    .returning()
+  let row: typeof schema.report.$inferSelect | undefined
+  try {
+    ;[row] = await db
+      .insert(schema.report)
+      .values({
+        organizationId: orgId,
+        // Reporter comes from the SESSION, never the body — golden rule 4.
+        reporterUserId: session.user.id,
+        entityType: entityType?.trim() || null,
+        entityId: entityId?.trim() || null,
+        reportedUserId: reportedId,
+        reason,
+        details: details?.trim().slice(0, 2000) || null,
+      })
+      .returning()
+  } catch (e) {
+    // Closes the race against the existence pre-check above: if the reported account was deleted
+    // between that SELECT and this INSERT, the reported_user_id FK rejects (23503). Same answer as
+    // the pre-check — a clean 404, not the FK's opaque 500. Anything else is a real error: rethrow.
+    if (reportedId && isForeignKeyViolation(e)) {
+      return c.json({ error: 'reported user not found' }, 404)
+    }
+    throw e
+  }
   if (!row) return c.json({ error: 'failed to create report' }, 500)
 
   // Moderation trail for the org's activity log (review queues read the report table itself).
@@ -144,10 +169,18 @@ moderationRoutes.post('/:orgId/blocks', requireOrg, async (c) => {
   if (!target) return c.json({ error: 'user not found' }, 404)
 
   // Idempotent: (blocker, blocked) is the primary key, so re-blocking is a no-op.
-  await db
-    .insert(schema.userBlock)
-    .values({ blockerUserId: session.user.id, blockedUserId: blockedId })
-    .onConflictDoNothing()
+  try {
+    await db
+      .insert(schema.userBlock)
+      .values({ blockerUserId: session.user.id, blockedUserId: blockedId })
+      .onConflictDoNothing()
+  } catch (e) {
+    // Closes the race against the existence pre-check above: if the target was deleted between that
+    // SELECT and this INSERT, the blocked_user_id FK rejects (23503). Same answer as the pre-check —
+    // a clean 404, not the FK's opaque 500. Anything else is a real error: rethrow.
+    if (isForeignKeyViolation(e)) return c.json({ error: 'user not found' }, 404)
+    throw e
+  }
   // No audit row: blocks are a personal safety action, kept out of the org activity feed so the
   // blocked party (or org admins browsing activity) can't discover who blocked whom.
   return c.json({ ok: true })

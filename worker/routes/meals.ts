@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, eq, gte, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 
 /**
  * Meal planning (PROMOTED feature) — a breadth ManyHandz resource (mirrors shopping.ts). Every
@@ -24,7 +24,7 @@ import { resolveHousehold, type HouseholdEnv } from '../household'
  *   DELETE /api/organizations/:orgId/meal-plan/:entryId                 → remove a meal entry
  *   POST   /api/organizations/:orgId/meal-plan/generate-grocery        → push week's ingredients
  */
-export const mealRoutes = new Hono<HouseholdEnv>()
+export const mealRoutes = new Hono<AuthEnv>()
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
@@ -79,7 +79,7 @@ mealRoutes.get('/:orgId/meal-plan', requireOrg, async (c) => {
 })
 
 mealRoutes.post('/:orgId/meal-plan', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const parsed = entryCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -108,7 +108,7 @@ mealRoutes.post('/:orgId/meal-plan', requireOrg, async (c) => {
 })
 
 mealRoutes.patch('/:orgId/meal-plan/:entryId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const entryId = c.req.param('entryId')
   const parsed = entryUpdate.safeParse(await c.req.json().catch(() => null))
@@ -136,7 +136,7 @@ mealRoutes.patch('/:orgId/meal-plan/:entryId', requireOrg, async (c) => {
 })
 
 mealRoutes.delete('/:orgId/meal-plan/:entryId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const entryId = c.req.param('entryId')
   const [row] = await getDb(c.env.DATABASE_URL)
@@ -154,7 +154,7 @@ mealRoutes.delete('/:orgId/meal-plan/:entryId', requireOrg, async (c) => {
  * list. The list must belong to this household (org-scoped). Returns the count of items added.
  */
 mealRoutes.post('/:orgId/meal-plan/generate-grocery', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const parsed = generateGrocery.safeParse(await c.req.json().catch(() => null))

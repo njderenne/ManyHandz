@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
 import { requireOrg, type AuthEnv } from '../middleware/org'
+import { stripImageMetadata } from '../lib/image-metadata'
+import { checkStorageQuota, billingError } from '../billing/limits'
 
 /**
  * Media — R2-backed file storage, org-scoped per the notifications.ts reference (session gate →
@@ -22,17 +24,18 @@ export const mediaRoutes = new Hono<AuthEnv>()
 // (text/html, image/svg+xml, …) on GET would execute uploaded markup with the victim's session —
 // stored XSS. Only these types are accepted at upload AND served inline on download; anything
 // else (including legacy rows written before this list existed) is forced to a download.
+//
+// IMAGE FORMATS ARE GATED BY OUR EXIF/GPS STRIPPER (worker/lib/image-metadata.ts): we only accept
+// image types we can losslessly sanitize, so the "we remove location data" guarantee is never silently
+// false. Accepted + stripped: JPEG, PNG, WebP. DELIBERATELY REJECTED: HEIC/HEIF/AVIF (ISOBMFF) and
+// GIF — safe in-place GPS stripping for those containers is error-prone, and a botched strip could
+// corrupt evidence, so we reject (400) rather than store an un-sanitizable original. This is
+// web-file-input-only: the native picker transcodes iPhone HEIC→JPEG ('Compatible'), so camera
+// uploads — the ones that carry GPS — arrive as JPEG and ARE stripped.
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
-  'image/gif',
-  'image/avif',
-  // HEIC/HEIF: the iOS camera's native format. The picker transcodes to JPEG (pickImage/takePhoto
-  // use 'Compatible'), so this is defense-in-depth — a stray HEIC stores instead of 400-ing. Safe to
-  // serve inline (image, not markup); non-Apple browsers may not render it, but iOS/expo-image does.
-  'image/heic',
-  'image/heif',
   'video/mp4',
   'video/webm',
   'audio/mpeg',
@@ -82,17 +85,31 @@ mediaRoutes.post('/', async (c) => {
 
   // Key is org-prefixed so a bucket listing/cleanup can be org-scoped too.
   const key = `org/${orgId}/${crypto.randomUUID()}`
-  // The use() above guarantees MEDIA; TS can't see across the middleware, hence the assertion.
-  await c.env.MEDIA!.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: mimeType } })
+  // Privacy: strip EXIF/GPS metadata from photos before they ever land in storage (image-metadata.ts).
+  // Camera photos carry location; we remove it server-side so the uploader's location is never stored.
+  // Coverage is JPEG/PNG/WebP — the only image types the allow-list accepts (HEIC/HEIF/AVIF/GIF are
+  // rejected above precisely because we can't safely strip them), so every accepted image is sanitized.
+  const bytes = stripImageMetadata(new Uint8Array(await file.arrayBuffer()), mimeType)
 
-  const [row] = await getDb(c.env.DATABASE_URL)
+  // Storage quota (worker/billing/limits.ts; monetization.limits.mediaGb — absent = uncapped).
+  // AFTER the EXIF strip so the REAL stored size is counted, BEFORE the R2 put so an over-quota
+  // upload stores nothing. Only NEW uploads are ever blocked — reads/deletes stay quota-free
+  // (the data-ownership promise). Entitled orgs sail past inside the helper.
+  const db = getDb(c.env.DATABASE_URL)
+  const quota = await checkStorageQuota(db, orgId, bytes.byteLength)
+  if (!quota.ok) return billingError(c, quota)
+
+  // The use() above guarantees MEDIA; TS can't see across the middleware, hence the assertion.
+  await c.env.MEDIA!.put(key, bytes, { httpMetadata: { contentType: mimeType } })
+
+  const [row] = await db
     .insert(schema.media)
     .values({
       organizationId: orgId,
       uploaderId: session.user.id,
       key,
       mimeType,
-      sizeBytes: file.size,
+      sizeBytes: bytes.byteLength,
     })
     .returning()
   return c.json(row, 201)

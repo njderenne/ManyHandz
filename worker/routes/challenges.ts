@@ -2,12 +2,12 @@ import { Hono } from 'hono'
 import { and, desc, eq, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+
 
 /**
  * Bonus challenges — time-boxed household challenges (the brief's §16). Org-scoped reads (every member
- * sees active/past challenges), mode-permission-gated writes (`requirePermission('createChallenges')` —
+ * sees active/past challenges), mode-permission-gated writes (`requireCapability('challenge:create')` —
  * which also applies the family-kid `allowKidChallenges` toggle via canWithHousehold). Four types:
  * `double_points` (a household-wide ×multiplier window — the completion engine reads the ACTIVE one),
  * `complete_count` / `no_overdue` / `custom` (target + bonusPoints, resolved by the cron at endsAt).
@@ -23,7 +23,7 @@ import { requirePermission, type HouseholdEnv } from '../household'
  *   PATCH  /api/organizations/:orgId/challenges/:challengeId  → edit          (createChallenges)
  *   DELETE /api/organizations/:orgId/challenges/:challengeId  → cancel/expire (createChallenges)
  */
-export const challengeRoutes = new Hono<HouseholdEnv>()
+export const challengeRoutes = new Hono<AuthEnv>()
 
 const CHALLENGE_TYPES = ['double_points', 'complete_count', 'no_overdue', 'custom'] as const
 
@@ -59,7 +59,7 @@ const challengeUpdate = z.object({
  * at a time. `excludeId` lets an UPDATE ignore the row being edited.
  */
 async function hasActiveDoublePoints(
-  env: HouseholdEnv['Bindings'],
+  env: AuthEnv['Bindings'],
   orgId: string,
   excludeId?: string,
 ): Promise<boolean> {
@@ -109,8 +109,9 @@ challengeRoutes.get('/:orgId/challenges/:challengeId', requireOrg, async (c) => 
   return c.json(row)
 })
 
-challengeRoutes.post('/:orgId/challenges', requireOrg, requirePermission('createChallenges'), async (c) => {
-  const { orgId, memberId } = c.get('household')
+challengeRoutes.post('/:orgId/challenges', requireOrg, requireCapability('challenge:create'), async (c) => {
+  const orgId = c.get('orgId')
+  const memberId = c.get('orgMemberId')
   const parsed = challengeCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
@@ -153,8 +154,8 @@ challengeRoutes.post('/:orgId/challenges', requireOrg, requirePermission('create
   return c.json(row, 201)
 })
 
-challengeRoutes.patch('/:orgId/challenges/:challengeId', requireOrg, requirePermission('createChallenges'), async (c) => {
-  const { orgId } = c.get('household')
+challengeRoutes.patch('/:orgId/challenges/:challengeId', requireOrg, requireCapability('challenge:create'), async (c) => {
+  const orgId = c.get('orgId')
   const challengeId = c.req.param('challengeId')
   const parsed = challengeUpdate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -206,8 +207,8 @@ challengeRoutes.patch('/:orgId/challenges/:challengeId', requireOrg, requirePerm
   return c.json(row)
 })
 
-challengeRoutes.delete('/:orgId/challenges/:challengeId', requireOrg, requirePermission('createChallenges'), async (c) => {
-  const { orgId } = c.get('household')
+challengeRoutes.delete('/:orgId/challenges/:challengeId', requireOrg, requireCapability('challenge:create'), async (c) => {
+  const orgId = c.get('orgId')
   const challengeId = c.req.param('challengeId')
   // Cancel an active challenge → 'expired'. No bonus is paid (the cron only pays out at natural end).
   const [row] = await getDb(c.env.DATABASE_URL)

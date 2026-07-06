@@ -1,4 +1,5 @@
 import '../global.css'
+import '@/lib/nativewind-animated' // registers className→style on Animated.* (must precede any Animated mount)
 import { useCallback, useEffect, useState } from 'react'
 import { AppState, Linking, Platform, Pressable, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
@@ -13,10 +14,13 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { CloudOff, X } from 'lucide-react-native'
 import { queryClient, asyncPersister, PERSIST_MAX_AGE } from '@/lib/query/client'
 import { ToastProvider } from '@/components/ui/toast'
+import { ConfirmProvider } from '@/components/ui/confirm'
 import { ErrorBoundary as CrashGuard } from '@/components/ui/error-boundary'
 import { wireNotificationTaps } from '@/lib/native/notifications'
 import { useActiveOrgGuard } from '@/lib/auth/use-active-org-guard'
 import { useRequireAuth } from '@/lib/auth/use-require-auth'
+import { useContextGuard } from '@/lib/context/use-context-guard'                 // B1
+import { useRequireSubscription } from '@/lib/billing/use-require-subscription'   // A1
 import { useRequireHousehold } from '@/lib/auth/use-require-household'
 
 // expo-router renders this for any screen that throws — navigation survives, white screens don't.
@@ -210,7 +214,12 @@ function AppShell() {
   // Auto-activate a sole organization so a user who created it elsewhere lands straight inside it
   // (no "create → activate" limbo). No-op for 0 or 2+ orgs; loop-safe and fail-open.
   useActiveOrgGuard()
-  // Signed in but no household yet → onboarding (create/join). Fail-open; never traps.
+  // B1 — redirects context-less users to /onboarding when tenant.onboarding==='require-create'
+  // (inert for ManyHandz: tenant.onboarding='none' — useRequireHousehold below is the product gate).
+  useContextGuard()
+  // A1 — cadio's hard wall; inert unless monetization.requireSubscription (config, not code).
+  useRequireSubscription()
+  // ManyHandz: signed in but no household yet → onboarding (create/join). Fail-open; never traps.
   useRequireHousehold()
 
   if (updateRequired) return <UpdateRequiredScreen />
@@ -279,11 +288,16 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <PersistQueryClientProvider
             client={queryClient}
-            persistOptions={{ persister: asyncPersister, maxAge: PERSIST_MAX_AGE }}
+            // buster keyed to the app version: any shipped response-shape change drops stale persisted
+            // snapshots on upgrade, so a screen reading newly-added fields can't crash on a pre-update
+            // cached object rehydrated from AsyncStorage (defends every screen at the source).
+            persistOptions={{ persister: asyncPersister, maxAge: PERSIST_MAX_AGE, buster: Constants.expoConfig?.version ?? '0' }}
           >
             <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
             <ToastProvider>
-              <AppShell />
+              <ConfirmProvider>
+                <AppShell />
+              </ConfirmProvider>
             </ToastProvider>
           </PersistQueryClientProvider>
         </SafeAreaProvider>

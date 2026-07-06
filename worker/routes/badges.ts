@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+
 
 /**
  * Badges — the household's recognition layer. Two kinds live side by side:
@@ -26,7 +26,7 @@ import { requirePermission, type HouseholdEnv } from '../household'
  *   GET    /api/organizations/:orgId/milestones                   → household milestones (context)
  *   GET    /api/organizations/:orgId/members/:memberId/badges     → custom awards + system unlocks + milestones
  */
-export const badgeRoutes = new Hono<HouseholdEnv>()
+export const badgeRoutes = new Hono<AuthEnv>()
 
 /** The custom-badge criteria the household can author (mirrors custom_badge.criteria_type). */
 export const BADGE_CRITERIA_TYPES = [
@@ -127,7 +127,7 @@ const badgeCreate = z.object({
 const badgeUpdate = badgeCreate.partial()
 
 /** Confirm a category belongs to this household (or is cleared). Returns false on a foreign id. */
-async function categoryOk(env: HouseholdEnv['Bindings'], orgId: string, categoryId: string | null | undefined) {
+async function categoryOk(env: AuthEnv['Bindings'], orgId: string, categoryId: string | null | undefined) {
   if (!categoryId) return true
   const [cat] = await getDb(env.DATABASE_URL)
     .select({ id: schema.choreCategory.id })
@@ -158,8 +158,9 @@ badgeRoutes.get('/:orgId/badges', requireOrg, async (c) => {
   return c.json({ custom, system: SYSTEM_BADGE_LIST })
 })
 
-badgeRoutes.post('/:orgId/badges', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId, memberId } = c.get('household')
+badgeRoutes.post('/:orgId/badges', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
+  const memberId = c.get('orgMemberId')
   const parsed = badgeCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
@@ -187,8 +188,8 @@ badgeRoutes.post('/:orgId/badges', requireOrg, requirePermission('createChores')
   return c.json(row, 201)
 })
 
-badgeRoutes.patch('/:orgId/badges/:badgeId', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId } = c.get('household')
+badgeRoutes.patch('/:orgId/badges/:badgeId', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
   const badgeId = c.req.param('badgeId')
   const parsed = badgeUpdate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -232,8 +233,8 @@ badgeRoutes.patch('/:orgId/badges/:badgeId', requireOrg, requirePermission('crea
   return c.json(row)
 })
 
-badgeRoutes.delete('/:orgId/badges/:badgeId', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId } = c.get('household')
+badgeRoutes.delete('/:orgId/badges/:badgeId', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
   const badgeId = c.req.param('badgeId')
   const [row] = await getDb(c.env.DATABASE_URL)
     .update(schema.customBadge)
@@ -249,8 +250,9 @@ badgeRoutes.delete('/:orgId/badges/:badgeId', requireOrg, requirePermission('cre
 
 const awardInput = z.object({ memberId: z.string().min(1).max(64) })
 
-badgeRoutes.post('/:orgId/badges/:badgeId/award', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId, memberId: awarderMemberId } = c.get('household')
+badgeRoutes.post('/:orgId/badges/:badgeId/award', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
+  const awarderMemberId = c.get('orgMemberId')
   const badgeId = c.req.param('badgeId')
   const db = getDb(c.env.DATABASE_URL)
 
@@ -290,8 +292,8 @@ badgeRoutes.post('/:orgId/badges/:badgeId/award', requireOrg, requirePermission(
   return c.json(row, 201)
 })
 
-badgeRoutes.delete('/:orgId/badges/:badgeId/award/:memberId', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId } = c.get('household')
+badgeRoutes.delete('/:orgId/badges/:badgeId/award/:memberId', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
   const badgeId = c.req.param('badgeId')
   const targetMemberId = c.req.param('memberId')
   const [row] = await getDb(c.env.DATABASE_URL)

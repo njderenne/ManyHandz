@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { canWithHousehold } from '@/lib/config/modes'
 import { POINTS_KIND } from './household'
 
@@ -21,7 +21,7 @@ import { POINTS_KIND } from './household'
  *   GET  /api/organizations/:orgId/gifts        → recent gifts in the household, newest first
  *   POST /api/organizations/:orgId/gifts        → send a gift   (giftPoints)
  */
-export const giftRoutes = new Hono<HouseholdEnv>()
+export const giftRoutes = new Hono<AuthEnv>()
 
 const GIFT_TYPES = ['general', 'thank_you', 'birthday', 'bonus'] as const
 
@@ -71,9 +71,9 @@ giftRoutes.get('/:orgId/gifts', requireOrg, async (c) => {
 })
 
 giftRoutes.post('/:orgId/gifts', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
-  if (!canWithHousehold(ctx.mode, ctx.householdRole, 'giftPoints', ctx.policy)) {
+  if (!canWithHousehold(ctx.mode, ctx.householdRole, 'points:gift', ctx.policy)) {
     return c.json({ error: 'forbidden — insufficient household permission' }, 403)
   }
 

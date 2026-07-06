@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { isAdmin } from '@/lib/config/modes'
 
 /**
@@ -18,7 +18,7 @@ import { isAdmin } from '@/lib/config/modes'
  *   POST   /api/organizations/:orgId/assignments/:assignmentId/comments  { body }    → add (any member)
  *   DELETE /api/organizations/:orgId/assignments/:assignmentId/comments/:commentId   → author or admin
  */
-export const commentRoutes = new Hono<HouseholdEnv>()
+export const commentRoutes = new Hono<AuthEnv>()
 
 /** Hard cap on comments per assignment (brief: "50 max"). */
 const MAX_COMMENTS = 50
@@ -29,7 +29,7 @@ const commentCreate = z.object({
 
 /** Confirm the assignment exists AND belongs to this org. Returns its id, or null on a foreign/missing id. */
 async function assignmentInOrg(
-  env: HouseholdEnv['Bindings'],
+  env: AuthEnv['Bindings'],
   orgId: string,
   assignmentId: string,
 ): Promise<string | null> {
@@ -71,7 +71,7 @@ commentRoutes.get('/:orgId/assignments/:assignmentId/comments', requireOrg, asyn
 
 commentRoutes.post('/:orgId/assignments/:assignmentId/comments', requireOrg, async (c) => {
   // Posting is open to any household member — resolveHousehold just gives us the author's member id.
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const assignmentId = c.req.param('assignmentId')
   if (!(await assignmentInOrg(c.env, ctx.orgId, assignmentId))) return c.json({ error: 'not found' }, 404)
@@ -110,7 +110,7 @@ commentRoutes.post('/:orgId/assignments/:assignmentId/comments', requireOrg, asy
 })
 
 commentRoutes.delete('/:orgId/assignments/:assignmentId/comments/:commentId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const assignmentId = c.req.param('assignmentId')
   const commentId = c.req.param('commentId')

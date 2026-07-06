@@ -16,6 +16,10 @@ import { t } from '@/lib/i18n'
  */
 type QueryLike = {
   isLoading: boolean
+  /** TanStack `isPending` — true while there's no data yet, INCLUDING a query disabled on a
+   *  not-yet-ready input (e.g. an empty orgId). Without this, a disabled query reads isLoading:false
+   *  and the boundary would fall through to children with undefined data → a blank screen. */
+  isPending?: boolean
   isError: boolean
   error?: unknown
   refetch?: () => void
@@ -34,7 +38,9 @@ export function AsyncBoundary({
   empty?: React.ReactNode
   isEmpty?: boolean
 }) {
-  if (query.isLoading) {
+  // Loading OR still-pending-with-no-data (a query disabled on a not-yet-ready orgId is the latter):
+  // show the spinner rather than ever rendering children with undefined data (a blank screen).
+  if (query.isLoading || (query.isPending && !query.isError)) {
     return (
       <>
         {loading ?? (

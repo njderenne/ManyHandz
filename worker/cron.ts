@@ -2,6 +2,10 @@ import { lt } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
 import type { Env } from './env'
 import { runRotation, runOverdue, runCompetitions, runChallenges } from './manyhandz/cron-jobs'
+import { APP_CONFIG } from '@/lib/config/app'
+import { sweepEscalations, advanceEscalations } from './lib/escalation'  // A3
+import { sendPromptNudges } from './engines/nudge'                       // B3
+import { syncAllProviders } from './integrations/sync'                   // B5
 
 /**
  * Cron — the `scheduled` export wired up in index.ts and triggered by [triggers] in wrangler.toml
@@ -128,4 +132,42 @@ export async function scheduled(
   // } catch (e) {
   //   failed('reminders.send', e)
   // }
+
+  // ── 2026-07-05 harvest jobs — each feature-gated (all OFF for ManyHandz today), try/caught ──
+
+  // 7. Escalation safety sweep (A3): open ladders for newly due slots, then advance to the
+  //    cumulative-from-scheduledFor target stage (SMS at safety.escalation.smsStage, capped by
+  //    dailySmsCap). Timing is quantized to the cron interval — enabling this REQUIRES tightening
+  //    the per-app cron (M-4; readiness enforces).
+  if (APP_CONFIG.features.escalations) {
+    try {
+      done('escalations.sweep', await sweepEscalations(db, env, new Date()))
+    } catch (e) {
+      failed('escalations.sweep', e)
+    }
+    try {
+      done('escalations.advance', await advanceEscalations(db, env, new Date()))
+    } catch (e) {
+      failed('escalations.advance', e)
+    }
+  }
+
+  // 8. Prompt nudges (B3): one per cadence window per prompt_state, advance-before-send so a
+  //    tick can never double-nudge inside a window (keepsey doctrine).
+  if (APP_CONFIG.features.prompts) {
+    try {
+      done('prompts.nudge', await sendPromptNudges(env))
+    } catch (e) {
+      failed('prompts.nudge', e)
+    }
+  }
+
+  // 9. Wearables pull-sync (B5): every connected provider_token, soft-failing per provider.
+  if (APP_CONFIG.features.wearables) {
+    try {
+      done('integrations.sync', await syncAllProviders(env))
+    } catch (e) {
+      failed('integrations.sync', e)
+    }
+  }
 }

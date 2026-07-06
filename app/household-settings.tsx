@@ -96,9 +96,9 @@ function ToggleRow({
 }
 
 /**
- * Household Settings — admin-only control surface (gated on can('editHouseholdSettings')). Edits the
+ * Household Settings — admin-only control surface (gated on can('org:settings')). Edits the
  * household policy via a local draft + Save (useUpdateHousehold), and manages members inline
- * (role change / remove via useUpdateMember, gated on can('changeRoles')). Every block is
+ * (role change / remove via useUpdateMember, gated on can('member:set_role')). Every block is
  * config-driven: the family-only kid toggles render only when the mode's role set includes 'kid',
  * and the AI block follows features.aiVerification — never a raw mode/role string.
  */
@@ -137,7 +137,7 @@ export default function HouseholdSettingsScreen() {
     )
   }
 
-  const canEdit = can('editHouseholdSettings')
+  const canEdit = can('org:settings')
   if (!canEdit) {
     return (
       <>
@@ -155,8 +155,8 @@ export default function HouseholdSettingsScreen() {
 
   // Config-driven blocks (never branch on raw mode/role strings).
   const showKidBlock = config.roles.includes('kid')
-  const showAiBlock = Boolean(features?.aiVerification) && can('configureAi')
-  const canChangeRoles = can('changeRoles')
+  const showAiBlock = Boolean(features?.aiVerification) && can('ai:configure')
+  const canChangeRoles = can('member:set_role')
 
   const dirty = household ? JSON.stringify(draftFrom(household)) !== JSON.stringify(draft) : false
 

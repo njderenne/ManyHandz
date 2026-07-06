@@ -37,8 +37,8 @@ import { formatCurrency } from '@/lib/format/currency'
 /**
  * Member profile (`/members/[id]`) — the rich per-member page: accent-ringed avatar, role, level/XP
  * (gamified modes), bio, age, the Settle-Up balance vs the viewer with deep-link Pay buttons, a Gift
- * Points action (gated on can('giftPoints')), recent activity, and the management affordances — an
- * admin (can('changeRoles')) can re-role / mark a member away, and the member themselves can edit
+ * Points action (gated on can('points:gift')), recent activity, and the management affordances — an
+ * admin (can('member:set_role')) can re-role / mark a member away, and the member themselves can edit
  * their own display name, accent color, bio, birthday, and away mode. Every write is permission-gated
  * by useHouseholdMode().can(); the Worker re-enforces.
  */
@@ -330,7 +330,7 @@ export default function MemberProfileScreen() {
             )}
 
             {/* Gift points — gated on giftPoints (kid toggle handled by can()); not on self. */}
-            {!isSelf && features?.pointGifting && can('giftPoints') ? (
+            {!isSelf && features?.pointGifting && can('points:gift') ? (
               <Button icon={Gift} label="Gift points" onPress={() => setGiftOpen(true)} />
             ) : null}
 
@@ -388,7 +388,7 @@ export default function MemberProfileScreen() {
             ) : null}
 
             {/* Admin actions */}
-            {!isSelf && can('changeRoles') ? (
+            {!isSelf && can('member:set_role') ? (
               <Card>
                 <CardContent className="gap-4">
                   <Text variant="label">Manage member</Text>

@@ -30,9 +30,11 @@ export function useTimer(initialSeconds = 0) {
 
 /** Format whole seconds as `MM:SS` (or `H:MM:SS` past an hour). */
 export function formatDuration(totalSeconds: number): string {
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  const s = totalSeconds % 60
+  // Round to whole seconds first so a fractional input never renders ":60" or a decimal seconds field.
+  const total = Math.round(totalSeconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
   const pad = (n: number) => String(n).padStart(2, '0')
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }

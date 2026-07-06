@@ -3,6 +3,7 @@ import { streamText } from 'hono/streaming'
 import { getDb } from '@/lib/db'
 import { requireSession, requireOrg, type AuthEnv } from '../middleware/org'
 import { requireTier } from '../entitlements'
+import { billingError } from '../billing/limits'
 import { createAI } from '../ai'
 import { verifyPhotos } from '../ai/verify-photos'
 import { logApiUsage } from '../usage/log'
@@ -67,7 +68,11 @@ aiRoutes.post('/complete', requireSession, async (c) => {
     c.executionCtx.waitUntil(
       logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
-    return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
+    // Keep the provider's diagnostics server-side — never echo them to the caller (info disclosure).
+    console.error(
+      JSON.stringify({ level: 'error', event: 'ai.provider_error', feature: meter.feature, message: e instanceof Error ? e.message : String(e) }),
+    )
+    return c.json({ error: 'AI request failed' }, 502)
   }
 
   c.executionCtx.waitUntil(
@@ -112,7 +117,11 @@ aiRoutes.post('/stream', requireSession, async (c) => {
     c.executionCtx.waitUntil(
       logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
-    return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
+    // Keep the provider's diagnostics server-side — never echo them to the caller (info disclosure).
+    console.error(
+      JSON.stringify({ level: 'error', event: 'ai.provider_error', feature: meter.feature, message: e instanceof Error ? e.message : String(e) }),
+    )
+    return c.json({ error: 'AI request failed' }, 502)
   }
 
   return streamText(c, async (stream) => {
@@ -167,7 +176,11 @@ aiRoutes.post('/vision', requireSession, async (c) => {
     c.executionCtx.waitUntil(
       logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
-    return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
+    // Keep the provider's diagnostics server-side — never echo them to the caller (info disclosure).
+    console.error(
+      JSON.stringify({ level: 'error', event: 'ai.provider_error', feature: meter.feature, message: e instanceof Error ? e.message : String(e) }),
+    )
+    return c.json({ error: 'AI request failed' }, 502)
   }
 
   c.executionCtx.waitUntil(
@@ -195,7 +208,11 @@ aiRoutes.post('/image', requireOrg, async (c) => {
   // see app/paywall.tsx) only hides buttons — this check is the authorization.
   const orgId = c.get('orgId')
   const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
-  if (!gate.ok) return c.json({ error: gate.reason }, 402)
+  // Canonical 402 envelope (BILLING §8.1) — `code` is what the client's isUpgradeError() routes
+  // to /paywall?reason=tier_required; a bare { error } 402 is invisible to that routing.
+  if (!gate.ok) {
+    return billingError(c, { ok: false, error: gate.reason, code: 'tier_required', upgradeTier: 'STANDARD' })
+  }
 
   const session = c.get('session')
   const ai = createAI(c.env)
@@ -216,7 +233,11 @@ aiRoutes.post('/image', requireOrg, async (c) => {
     c.executionCtx.waitUntil(
       logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
-    return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
+    // Keep the provider's diagnostics server-side — never echo them to the caller (info disclosure).
+    console.error(
+      JSON.stringify({ level: 'error', event: 'ai.provider_error', feature: meter.feature, message: e instanceof Error ? e.message : String(e) }),
+    )
+    return c.json({ error: 'AI request failed' }, 502)
   }
 
   // Generation is billed per image, not per token → log one image unit.

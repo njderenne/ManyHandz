@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core'
 import { getDb, schema } from '@/lib/db'
 import { requireSession, type AuthEnv } from '../middleware/org'
 
@@ -18,7 +19,10 @@ import { requireSession, type AuthEnv } from '../middleware/org'
  * Defaults: everything true except `digest` (the weekly summary is opt-in). The jsonb column
  * stays open-shaped so minted apps can add channels without a migration; PATCH shallow-merges
  * the TOP-LEVEL channel keys into the stored value, so updating one channel never clobbers
- * another — clients therefore send whole channel objects, not single flags.
+ * another — clients therefore send whole channel objects, not single flags. The merge runs
+ * ATOMICALLY in SQL (`notification_prefs || patch::jsonb`), so two concurrent PATCHes toggling
+ * DIFFERENT channels both survive — neither read-modify-writes over the other (neon-http has no
+ * interactive transactions, so a JS-side merge would lose the second writer's channel).
  *
  *   GET   /api/user/settings → the caller's row (created with defaults on first read)
  *   PATCH /api/user/settings { notificationPrefs?, marketingOptIn?, locale?, timezone?,
@@ -119,8 +123,9 @@ settingsRoutes.patch('/settings', requireSession, async (c) => {
   if (!isPlainObject(body)) return c.json({ error: 'a JSON object body is required' }, 400)
 
   // Field-by-field defensive validation — wrong types are rejected loudly (400), never coerced.
-  // Unknown fields are ignored, so old servers tolerate newer clients.
-  const updates: Partial<typeof schema.userSettings.$inferInsert> = {}
+  // Unknown fields are ignored, so old servers tolerate newer clients. Typed as the drizzle update
+  // set-source (not $inferInsert) so notificationPrefs can carry an atomic `sql` jsonb merge below.
+  const updates: PgUpdateSetSource<typeof schema.userSettings> = {}
 
   if ('marketingOptIn' in body) {
     if (typeof body.marketingOptIn !== 'boolean') {
@@ -182,30 +187,32 @@ settingsRoutes.patch('/settings', requireSession, async (c) => {
   }
 
   const db = getDb(c.env.DATABASE_URL)
-  // PATCH-before-first-GET is legal: ensure the row exists (also gives us the stored prefs to merge).
+  // PATCH-before-first-GET is legal: ensure the row exists (the prefs merge below runs in SQL, but
+  // we still read the current row to enforce the channel ceiling).
   const current = await getOrCreateSettings(db, session.user.id)
   if (!current) return c.json({ error: 'failed to initialize user settings' }, 500)
 
   if (prefsPatch) {
-    // Shallow-merge channels into what's stored — a one-channel patch never clobbers the others.
-    const merged = {
-      ...(current.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS),
-      ...prefsPatch,
-    }
-    // Channel keys accumulate across PATCHes (the merge keeps every key ever written), so the
-    // ceiling must hold on the MERGED result — a per-patch cap alone still grows the row forever.
-    // But only when the patch ADDS keys: a pre-cap row that already exceeds the ceiling must stay
-    // patchable (flag flips on existing channels), or it would be bricked forever.
-    const addsKeys = Object.keys(prefsPatch).some(
-      (k) => !(k in (current.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS)),
-    )
+    // Ceiling check (read-side only): channel keys accumulate across PATCHes, so the cap must hold
+    // on the would-be MERGED result — a per-patch cap alone still grows the row forever. Enforced
+    // only when the patch ADDS keys: a pre-cap row that already exceeds the ceiling must stay
+    // patchable (flag flips on existing channels), or it would be bricked forever. This read is for
+    // validation only and may be slightly stale under concurrency, so the cardinality ceiling is
+    // best-effort — but the per-channel DATA is never lost, because the WRITE itself is atomic.
+    const stored = current.notificationPrefs ?? DEFAULT_NOTIFICATION_PREFS
+    const merged = { ...stored, ...prefsPatch }
+    const addsKeys = Object.keys(prefsPatch).some((k) => !(k in stored))
     if (addsKeys && Object.keys(merged).length > MAX_PREF_CHANNELS) {
       return c.json(
         { error: `too many notification channels (max ${MAX_PREF_CHANNELS})` },
         400,
       )
     }
-    updates.notificationPrefs = merged
+    // Atomic per-channel merge: concatenate the patch onto the stored jsonb in SQL so two concurrent
+    // PATCHes toggling DIFFERENT channels both survive (neon-http has no interactive transactions, so
+    // a JS read-modify-write would let the second writer clobber the first). `||` is jsonb's
+    // shallow-merge — right-hand keys win — exactly the top-level channel merge we want.
+    updates.notificationPrefs = sql`coalesce(${schema.userSettings.notificationPrefs}, '{}'::jsonb) || ${JSON.stringify(prefsPatch)}::jsonb`
   }
 
   const [updated] = await db

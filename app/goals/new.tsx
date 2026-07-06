@@ -55,7 +55,7 @@ export default function NewGoalScreen() {
   const membersQuery = useHouseholdMembers(orgId ?? '')
   const createGoal = useCreateGoal(orgId ?? '')
 
-  const canTargetAnyone = can('createGoalsForAnyone')
+  const canTargetAnyone = can('goal:create_any')
   const meMemberId = householdQuery.data?.me.memberId
 
   const [title, setTitle] = useState('')

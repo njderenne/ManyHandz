@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+
 
 /**
  * Rotations — recurring chores that rotate themselves among an ordered set of members and skip
@@ -16,7 +16,7 @@ import { requirePermission, type HouseholdEnv } from '../household'
  *   POST   /api/organizations/:orgId/rotations        → create + seed the first assignment   (assignChores)
  *   DELETE /api/organizations/:orgId/rotations/:id    → stop (soft, isActive=false)           (assignChores)
  */
-export const rotationRoutes = new Hono<HouseholdEnv>()
+export const rotationRoutes = new Hono<AuthEnv>()
 
 const createInput = z.object({
   choreId: z.string().min(1).max(64),
@@ -47,8 +47,8 @@ rotationRoutes.get('/:orgId/rotations', requireOrg, async (c) => {
   return c.json(rows)
 })
 
-rotationRoutes.post('/:orgId/rotations', requireOrg, requirePermission('assignChores'), async (c) => {
-  const { orgId } = c.get('household')
+rotationRoutes.post('/:orgId/rotations', requireOrg, requireCapability('chore:assign'), async (c) => {
+  const orgId = c.get('orgId')
   const db = getDb(c.env.DATABASE_URL)
   const parsed = createInput.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -103,8 +103,8 @@ rotationRoutes.post('/:orgId/rotations', requireOrg, requirePermission('assignCh
   return c.json({ group, firstAssignmentId: first?.id ?? null }, 201)
 })
 
-rotationRoutes.delete('/:orgId/rotations/:id', requireOrg, requirePermission('assignChores'), async (c) => {
-  const { orgId } = c.get('household')
+rotationRoutes.delete('/:orgId/rotations/:id', requireOrg, requireCapability('chore:assign'), async (c) => {
+  const orgId = c.get('orgId')
   const id = c.req.param('id')
   const [row] = await getDb(c.env.DATABASE_URL)
     .update(schema.rotationGroup)

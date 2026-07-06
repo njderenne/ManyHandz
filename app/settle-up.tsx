@@ -112,7 +112,7 @@ export default function SettleUpScreen() {
   const [settleRow, setSettleRow] = useState<SettlementRow | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
-  const isAdmin = can('editHouseholdSettings')
+  const isAdmin = can('org:settings')
   // Mirror the Worker: parents file in family; any peer files where there's no gamification hierarchy.
   const canCreate = isAdmin || (features ? !features.gamification : false)
   const showDeepLinks = features?.paymentHandles ?? false

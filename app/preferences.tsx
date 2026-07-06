@@ -62,6 +62,8 @@ function ToggleRow({
 function AppearanceSection() {
   const mode = useThemeMode((s) => s.mode)
   const setMode = useThemeMode((s) => s.setMode)
+  const colorBlindSafe = usePrefs((s) => s.colorBlindSafe)
+  const setColorBlindSafe = usePrefs((s) => s.setColorBlindSafe)
   return (
     <Section title={t('preferences.appearanceSection')}>
       <Card>
@@ -76,6 +78,14 @@ function AppearanceSection() {
             ]}
           />
           <Text variant="caption">{t('preferences.appearanceHint')}</Text>
+          {/* Device-local like the theme: chartPalette reads this pref, so every chart on screen
+              re-colors the instant it flips (see src/components/charts/palette.ts). */}
+          <ToggleRow
+            title={t('preferences.colorBlindSafe')}
+            description={t('preferences.colorBlindSafeHint')}
+            value={colorBlindSafe}
+            onValueChange={setColorBlindSafe}
+          />
         </CardContent>
       </Card>
     </Section>

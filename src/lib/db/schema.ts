@@ -113,8 +113,11 @@ export const organization = pgTable('organization', {
   slug: text('slug').notNull().unique(),
   logo: text('logo'),
   metadata: text('metadata'),
-  /** Tenant flavor — 'team' (default) or 'personal' (auto-provisioned solo org); apps add kinds. */
-  kind: text('kind').notNull().default('team'),
+  /** Tenant flavor — SPINE §10.3 cutover: ManyHandz kinds are 'family' | 'roommate' | 'office'
+   *  (+ reserved 'personal', unused here — no autoPersonalOrg). MUST equal DEFAULT_KIND in
+   *  src/lib/config/roles.ts (a vitest asserts it). The legacy `mode` column below carries the
+   *  same value until release N+1 drops it. */
+  kind: text('kind').notNull().default('family'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -127,8 +130,9 @@ export const organization = pgTable('organization', {
   stripeSubscriptionId: text('stripe_subscription_id'),
   trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
-  // --- ManyHandz: household config. `mode` drives the entire UX via src/lib/config/modes.ts;
-  //     the rest are the household policy flags the mode + Settings screen read. ---
+  // --- ManyHandz: household config + policy flags (Settings screen + POLICY_FLAGS read these). ---
+  /** DEPRECATED (SPINE §10.3 release N): superseded by `kind` above — kept dual-written until the
+   *  release N+1 migration drops it. Do not add new readers. */
   mode: text('mode').notNull().default('family'), // 'family' | 'roommate' | 'office'
   inviteCode: text('invite_code').unique(), // 8-char join-by-code / QR code (minted on create)
   timezone: text('timezone').notNull().default('America/New_York'),
@@ -186,6 +190,9 @@ export const member = pgTable(
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
+    /** Soft-archive: an archived member keeps history but is excluded from rosters, pickers,
+     *  and oversight reads (worker/middleware/org.ts requireOrg filters on it). NULL = active. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
   },
   (t) => [index('member_org_idx').on(t.organizationId), index('member_user_idx').on(t.userId)],
 )
@@ -889,6 +896,257 @@ export const paymentHandle = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [uniqueIndex('payment_handle_user_method_idx').on(t.userId, t.method)],
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// 2026-07-05 harvest — Subject primitive, share grants, escalations, engines
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Subject — the org-scoped "who/what this org tracks" primitive: care recipient, pet, child,
+ * athlete, plant… A subject MAY be account-less (selfUserId null) or self-linked to a member's
+ * user. "Is self" is DERIVED: subject.selfUserId === session.user.id — never an isSelf column.
+ * Subjects are domain rows inside the tenant, never tenants themselves. Apps may ADD real
+ * columns after the chassis block (pet-pilot-style) or use `profile` for low-churn extras.
+ * PRIVACY: subjects are often minors/patients. Rows never leave org-scoped responses except
+ * through an explicit allowlisted DTO (share-grant composers, public resolvers).
+ */
+export const subject = pgTable(
+  'subject',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** Per-app vocab from APP_CONFIG.subjects.kinds — 'person' | 'pet' | 'child' | … (TEXT, no enum). */
+    kind: text('kind').notNull().default('person'),
+    displayName: text('display_name').notNull(),
+    /** The self-link — null = account-less subject managed by others. Only ever set to the CALLER's id. */
+    selfUserId: text('self_user_id').references(() => user.id, { onDelete: 'set null' }),
+    avatarMediaId: text('avatar_media_id').references(() => media.id, { onDelete: 'set null' }),
+    /** IANA tz — drives subject-local scheduling (account-less subjects have no user_settings). */
+    timezone: text('timezone'),
+    /** YYYY-MM-DD TEXT (RxMndr convention — no tz math on a birthday). Nullable: keepsey "expecting". */
+    birthDate: text('birth_date'),
+    notes: text('notes'),
+    /** Escape hatch for per-app low-churn fields (journey pack, species detail…). Never public. */
+    profile: jsonb('profile').$type<Record<string, unknown>>(),
+    /** Soft-remove — keeps all history, drops from active views, stops schedules/reminders. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index('subject_org_idx').on(t.organizationId, t.kind),
+    index('subject_self_user_idx').on(t.selfUserId),
+    // One self-linked subject per (org, user) — a user is at most one "self" per tenant.
+    uniqueIndex('subject_org_self_unique_idx')
+      .on(t.organizationId, t.selfUserId)
+      .where(sql`self_user_id IS NOT NULL`),
+  ],
+)
+
+export type Subject = typeof subject.$inferSelect
+export type NewSubject = typeof subject.$inferInsert
+
+/**
+ * Access grant — a NAMED, permission-scoped, time-boxed, auditable capability for an account-less
+ * outsider (sitter, visiting nurse, grandparent). The CODE is the credential: short, unambiguous,
+ * CSPRNG-minted, re-validated on every request. Soft-revoke preserves the audit trail.
+ * Generalizes pet-pilot sitter_access + RxMndr's public-link lifecycle; share_token is UNTOUCHED
+ * (anonymous read-only links) — decision matrix in SUBJECT_SPEC §6.
+ */
+export const accessGrant = pgTable(
+  'access_grant',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** Optional pin to ONE subject (visiting nurse for Mom). Null = whole-org grant (sitter mode). */
+    subjectId: text('subject_id').references(() => subject.id, { onDelete: 'cascade' }),
+    granteeName: text('grantee_name').notNull(),
+    granteeEmail: text('grantee_email'),
+    code: text('code').notNull().unique(),
+    /** Per-app scope vocab (worker/grant-config.ts GRANT_SCOPES), e.g. 'view:subjects' | 'log:feeding'. */
+    scopes: text('scopes').array().notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), // NOT NULL — no forever grants
+    /** Soft-revoke — null = active. The audit trail is retained after revoke. */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    useCount: integer('use_count').notNull().default(0),
+    createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index('access_grant_org_idx').on(t.organizationId),
+    index('access_grant_expires_idx').on(t.expiresAt),
+    index('access_grant_subject_idx').on(t.subjectId),
+  ],
+)
+
+/** Immutable audit of every grant interaction, including 'view' page loads. Bounded per grant
+ *  (GRANT_ACTIVITY_MAX_ROWS in worker/lib/access-grant.ts — amortized prune, no cron). */
+export const accessGrantActivity = pgTable(
+  'access_grant_activity',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    grantId: text('grant_id').notNull()
+      .references(() => accessGrant.id, { onDelete: 'cascade' }),
+    /** Attribution survives subject purge — SET NULL, not cascade. */
+    subjectId: text('subject_id').references(() => subject.id, { onDelete: 'set null' }),
+    /** 'view' | an app action verb (matches the scope's action part). */
+    action: text('action').notNull(),
+    /** Link to the operational row the action created ('feed_log', id) — tamper-evident pairing. */
+    entityType: text('entity_type'),
+    entityId: text('entity_id'),
+    /** WHITELISTED + per-field-capped at the route (untrusted, account-less input). */
+    details: jsonb('details').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('access_grant_activity_grant_idx').on(t.grantId, t.createdAt),
+    index('access_grant_activity_org_idx').on(t.organizationId, t.createdAt),
+  ],
+)
+
+/**
+ * Escalation — one row per escalated slot (reminder → follow_up → alert → missed), generalized
+ * from RxMndr's production ladder. The slot anchor is (entityType, entityId, scheduledFor) — an
+ * app points it at any domain row (medication schedule, chore, dose). Stage vocabulary + dwell
+ * timers live in APP_CONFIG.safety.escalation (TEXT column, no enum — RxMndr's pgEnums are the
+ * grandfathered exception, never copied). Cron sweep + advance: worker/lib/escalation.ts.
+ */
+export const escalation = pgTable(
+  'escalation',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** Optional subject pin — escalations about a person/pet. Null = org-level. */
+    subjectId: text('subject_id').references(() => subject.id, { onDelete: 'cascade' }),
+    /** App-domain anchor of the escalated slot. */
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    scheduledFor: timestamp('scheduled_for', { withTimezone: true }).notNull(),
+    /** Current ladder stage — APP_CONFIG.safety.escalation.stages vocab (TEXT). */
+    currentStage: text('current_stage').notNull().default('reminder'),
+    /** stage → ISO timestamp of entry; drives dwell math + audit. */
+    stageTimestamps: jsonb('stage_timestamps').$type<Record<string, string>>().notNull().default({}),
+    snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
+    smsSentAt: timestamp('sms_sent_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    /** 'confirmed' | 'dismissed' | 'missed' | 'auto' (TEXT vocab). */
+    resolution: text('resolution'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    // Idempotent slot creation — the sweep can re-run forever without duplicating a ladder.
+    uniqueIndex('escalation_slot_idx').on(t.organizationId, t.entityType, t.entityId, t.scheduledFor),
+    index('escalation_unresolved_idx').on(t.currentStage).where(sql`resolved_at IS NULL`),
+    index('escalation_subject_idx').on(t.subjectId),
+  ],
+)
+
+/**
+ * Prompt-engine rotation state (keepsey pattern, subject-generalized). Prompt DEFINITIONS live in
+ * code (worker/engines/nudge.ts catalog — the achievements doctrine); only rotation state is data.
+ * subjectId null = an org-level prompt track (apps without subjects).
+ */
+export const promptState = pgTable(
+  'prompt_state',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    subjectId: text('subject_id').references(() => subject.id, { onDelete: 'cascade' }),
+    servedPromptKeys: jsonb('served_prompt_keys').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /** 'daily' | 'weekly' | 'off' — user-set cadence; gentle by default, never guilt. */
+    cadence: text('cadence').notNull().default('weekly'),
+    packKeys: jsonb('pack_keys').$type<string[]>().notNull().default(sql`'["core"]'::jsonb`),
+    lastServedAt: timestamp('last_served_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex('prompt_state_subject_idx')
+      .on(t.organizationId, t.subjectId).where(sql`subject_id IS NOT NULL`),
+    uniqueIndex('prompt_state_org_idx')
+      .on(t.organizationId).where(sql`subject_id IS NULL`),
+  ],
+)
+
+/**
+ * Seeded reference catalog (grindline drills pattern, generalized). GLOBAL seeded rows have
+ * organizationId NULL and a STABLE human id (e.g. 'basketball.shooting.form-shots') written by
+ * worker/engines/catalog-seed.ts (idempotent, version-watermarked). Org rows are user customs.
+ * Apps with richer needs keep their own tables and reuse the seed MECHANISM only.
+ */
+export const catalogItem = pgTable(
+  'catalog_item',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    /** NULL = global seeded row (readable by every org); non-null = that org's custom row. */
+    organizationId: text('organization_id')
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    /** App vocab: 'drill' | 'exercise' | 'recipe' … (TEXT). */
+    kind: text('kind').notNull(),
+    /** Optional hierarchy (category id within the same table). */
+    parentId: text('parent_id'),
+    name: text('name').notNull(),
+    /** App-shaped payload (instructions, difficulty, media keys…). */
+    data: jsonb('data').$type<Record<string, unknown>>(),
+    /** Seed-catalog version that last wrote this row (global rows only). */
+    version: integer('version').notNull().default(1),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index('catalog_item_kind_idx').on(t.kind, t.parentId),
+    index('catalog_item_org_idx').on(t.organizationId),
+  ],
+)
+
+/**
+ * Generated report — range-metrics report with editable AI prose (RxMndr doctor-report pattern).
+ * `data` is the deterministic engine output (worker/engines/range-metrics.ts); `summary` is
+ * AI/user prose, null until written — the deterministic half never blocks on a model call.
+ */
+export const generatedReport = pgTable(
+  'generated_report',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    organizationId: text('organization_id').notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    subjectId: text('subject_id').references(() => subject.id, { onDelete: 'set null' }),
+    /** App vocab: 'doctor-visit' | 'monthly' | … (TEXT). */
+    kind: text('kind').notNull(),
+    rangeStart: timestamp('range_start', { withTimezone: true }).notNull(),
+    rangeEnd: timestamp('range_end', { withTimezone: true }).notNull(),
+    /** Deterministic metrics payload — allowlisted DTO shape, engine-computed. */
+    data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+    /** Editable prose (AI pass or human). Null on generate; capped at the route (≤ 8 KB). */
+    summary: text('summary'),
+    createdByMemberId: text('created_by_member_id').references(() => member.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index('generated_report_org_idx').on(t.organizationId, t.createdAt),
+    index('generated_report_subject_idx').on(t.subjectId),
+  ],
 )
 
 export const aiChatThreadRelations = relations(aiChatThread, ({ one, many }) => ({
@@ -1621,3 +1879,10 @@ export type AiVerification = typeof aiVerification.$inferSelect
 export type WeeklyReport = typeof weeklyReport.$inferSelect
 export type MealPlanEntry = typeof mealPlanEntry.$inferSelect
 export type ActivityReaction = typeof activityReaction.$inferSelect
+// 2026-07-05 harvest tables (Subject/NewSubject are exported beside the table — SUBJECT_SPEC shape).
+export type AccessGrant = typeof accessGrant.$inferSelect
+export type AccessGrantActivity = typeof accessGrantActivity.$inferSelect
+export type Escalation = typeof escalation.$inferSelect
+export type PromptState = typeof promptState.$inferSelect
+export type CatalogItem = typeof catalogItem.$inferSelect
+export type GeneratedReport = typeof generatedReport.$inferSelect

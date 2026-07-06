@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { canWithHousehold } from '@/lib/config/modes'
 import { notify } from '../notify'
 
@@ -25,7 +25,7 @@ import { notify } from '../notify'
  *   POST /api/organizations/:orgId/competitions/:id/accept → opponent accepts (→ active)
  *   POST /api/organizations/:orgId/competitions/:id/decline→ opponent declines (→ declined)
  */
-export const competitionRoutes = new Hono<HouseholdEnv>()
+export const competitionRoutes = new Hono<AuthEnv>()
 
 const COMPETITION_TYPES = ['most_points', 'most_completions', 'first_to_target', 'specific_chore_race'] as const
 
@@ -51,7 +51,7 @@ const competitionCreate = z
   })
 
 /** Confirm a chore belongs to this household (or is cleared). Returns false on a foreign id. */
-async function choreOk(env: HouseholdEnv['Bindings'], orgId: string, choreId: string | null | undefined) {
+async function choreOk(env: AuthEnv['Bindings'], orgId: string, choreId: string | null | undefined) {
   if (!choreId) return true
   const [row] = await getDb(env.DATABASE_URL)
     .select({ id: schema.chore.id })
@@ -92,9 +92,9 @@ competitionRoutes.get('/:orgId/competitions/:id', requireOrg, async (c) => {
 })
 
 competitionRoutes.post('/:orgId/competitions', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
-  if (!canWithHousehold(ctx.mode, ctx.householdRole, 'createCompetitions', ctx.policy)) {
+  if (!canWithHousehold(ctx.mode, ctx.householdRole, 'competition:create', ctx.policy)) {
     return c.json({ error: 'forbidden — insufficient household permission' }, 403)
   }
   const db = getDb(c.env.DATABASE_URL)
@@ -178,7 +178,7 @@ type OpponentPendingResult = { row: CompetitionRow; error: null } | { row: null;
 
 /** Load a pending competition this caller is the OPPONENT of (the only one who may accept/decline). */
 async function loadOpponentPending(
-  env: HouseholdEnv['Bindings'],
+  env: AuthEnv['Bindings'],
   orgId: string,
   id: string,
   opponentMemberId: string,
@@ -195,7 +195,7 @@ async function loadOpponentPending(
 }
 
 competitionRoutes.post('/:orgId/competitions/:id/accept', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
 
@@ -242,7 +242,7 @@ competitionRoutes.post('/:orgId/competitions/:id/accept', requireOrg, async (c) 
 })
 
 competitionRoutes.post('/:orgId/competitions/:id/decline', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
 

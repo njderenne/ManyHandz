@@ -293,8 +293,12 @@ chatRoutes.post('/:orgId/chat/threads/:threadId/messages', requireOrg, async (c)
     c.executionCtx.waitUntil(
       logApiUsage(c.env, { ...meter, ok: false, errorCode: 'provider_error', latencyMs: Date.now() - startedAt }),
     )
+    // Keep the provider's diagnostics server-side — never echo them to the caller (info disclosure).
+    console.error(
+      JSON.stringify({ level: 'error', event: 'ai.provider_error', feature: meter.feature, message: e instanceof Error ? e.message : String(e) }),
+    )
     // The user message above is already persisted — the client re-syncs and offers retry.
-    return c.json({ error: e instanceof Error ? e.message : 'AI request failed' }, 502)
+    return c.json({ error: 'AI request failed' }, 502)
   }
 
   return streamText(c, async (stream) => {

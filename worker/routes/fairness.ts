@@ -2,9 +2,9 @@ import { Hono } from 'hono'
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg } from '../middleware/org'
+import { requireOrg, type AuthEnv } from '../middleware/org'
 import { requireTier } from '../entitlements'
-import { type HouseholdEnv } from '../household'
+
 import { computeFairness, type MemberContribution } from '@/lib/manyhandz/fairness'
 import { todayInTz, shiftDate, compareDate } from '@/lib/manyhandz/dates'
 
@@ -23,7 +23,7 @@ import { todayInTz, shiftDate, compareDate } from '@/lib/manyhandz/dates'
  *
  * Pairs with src/lib/query/hooks/useFairness.ts.
  */
-export const fairnessRoutes = new Hono<HouseholdEnv>()
+export const fairnessRoutes = new Hono<AuthEnv>()
 
 /** Completion statuses that COUNT toward effort (a rejected / pending_approval completion does not). */
 const COUNTED_STATUSES = ['approved', 'ai_approved'] as const

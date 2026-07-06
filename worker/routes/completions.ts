@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, eq, gte, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { can } from '@/lib/config/modes'
 import { computePoints, type CompletionPhotos } from '@/lib/manyhandz/points'
 import { todayInTz, compareDate } from '@/lib/manyhandz/dates'
@@ -24,7 +24,7 @@ import { logApiUsage } from '../usage/log'
  *   POST /api/organizations/:orgId/completions/:id/approve             → approve   (approveCompletions)
  *   POST /api/organizations/:orgId/completions/:id/reject  { reason }  → reject    (approveCompletions)
  */
-export const completionRoutes = new Hono<HouseholdEnv>()
+export const completionRoutes = new Hono<AuthEnv>()
 
 const completeInput = z.object({
   beforePhotoMediaId: z.string().max(64).nullish(),
@@ -47,7 +47,7 @@ function photosOf(before?: string | null, after?: string | null): CompletionPhot
 }
 
 /** Active double-points multiplier for the household right now (×1 if none). */
-async function activeMultiplier(env: HouseholdEnv['Bindings'], orgId: string): Promise<number> {
+async function activeMultiplier(env: AuthEnv['Bindings'], orgId: string): Promise<number> {
   const now = new Date()
   const [ch] = await getDb(env.DATABASE_URL)
     .select({ mult: schema.bonusChallenge.pointsMultiplier })
@@ -72,7 +72,7 @@ async function activeMultiplier(env: HouseholdEnv['Bindings'], orgId: string): P
  * exact verdict the user saw — no second model call, and the client can't forge it.
  */
 completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const assignmentId = c.req.param('assignmentId')
@@ -99,7 +99,7 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requir
 
   // Same actor rule as completing: the assignee, or an admin acting on their behalf.
   const isAssignee = a.assignedToMemberId === ctx.memberId
-  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'assignChores')) return c.json({ error: 'forbidden' }, 403)
+  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'chore:assign')) return c.json({ error: 'forbidden' }, 403)
 
   const parsed = previewInput.safeParse(await c.req.json().catch(() => ({})))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -144,7 +144,7 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/verify-preview', requir
 })
 
 completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const assignmentId = c.req.param('assignmentId')
@@ -177,7 +177,7 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   // The assignee completes their own; an admin (assignChores) may complete on their behalf. Credit
   // always goes to the assignee.
   const isAssignee = a.assignedToMemberId === ctx.memberId
-  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'assignChores')) return c.json({ error: 'forbidden' }, 403)
+  if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'chore:assign')) return c.json({ error: 'forbidden' }, 403)
 
   const [assignee] = await db
     .select({ id: schema.member.id, userId: schema.member.userId, householdRole: schema.member.householdRole })
@@ -396,7 +396,7 @@ completionRoutes.get('/:orgId/completions', requireOrg, async (c) => {
   return c.json(rows)
 })
 
-async function loadPendingCompletion(env: HouseholdEnv['Bindings'], orgId: string, completionId: string) {
+async function loadPendingCompletion(env: AuthEnv['Bindings'], orgId: string, completionId: string) {
   const [row] = await getDb(env.DATABASE_URL)
     .select({
       id: schema.completion.id,
@@ -414,8 +414,8 @@ async function loadPendingCompletion(env: HouseholdEnv['Bindings'], orgId: strin
 }
 
 completionRoutes.post('/:orgId/completions/:id/approve', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:approve')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const comp = await loadPendingCompletion(c.env, ctx.orgId, c.req.param('id'))
   if (!comp) return c.json({ error: 'not found' }, 404)
@@ -450,8 +450,8 @@ completionRoutes.post('/:orgId/completions/:id/approve', requireOrg, async (c) =
 })
 
 completionRoutes.post('/:orgId/completions/:id/reject', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:approve')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const parsed = z.object({ reason: z.string().trim().min(1).max(300) }).safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'a rejection reason is required' }, 400)

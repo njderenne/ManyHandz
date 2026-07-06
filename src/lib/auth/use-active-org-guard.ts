@@ -23,6 +23,13 @@ import { authClient } from '@/lib/auth/client'
  *    as the fallback, exactly as before.
  *  - Platform-agnostic: imports the shared `authClient` surface, so Metro's native (client.ts) and
  *    web (client.web.ts) builds both get the same behavior.
+ *
+ * Cooperates with useContextGuard (src/lib/context/use-context-guard.ts, SPINE_SPEC §6.3) rather
+ * than fighting it: THIS guard owns the 1-org auto-activate; that one owns "no context to work
+ * in" (0 orgs, or 2+ with none active → /onboarding) and only when
+ * APP_CONFIG.tenant.onboarding === 'require-create'. Because this guard settles the sole-org case,
+ * the context guard never has to disambiguate a single org — mount order in AppShell is
+ * irrelevant, both converge within one resolve cycle.
  */
 export function useActiveOrgGuard(): void {
   const { data: session } = authClient.useSession()

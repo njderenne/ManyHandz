@@ -1,6 +1,16 @@
 import type { MiddlewareHandler } from 'hono'
 import { getAuth } from '../auth'
 import type { Env } from '../env'
+import { APP_CONFIG } from '@/lib/config/app'
+
+/**
+ * Stable per-app slug, prefixed onto every KV key so apps that SHARE a RATE_LIMIT namespace can
+ * never cross-pollinate counters (the keys carry no namespace isolation of their own). Derived
+ * from APP_CONFIG.name — the one field the mint always rewrites — so it stays config-driven with
+ * no extra knob: lowercased, non-alphanumeric runs collapsed to a single '-'. e.g. 'Splitrue' →
+ * 'splitrue', 'App Template' → 'app-template'.
+ */
+const APP_SLUG = APP_CONFIG.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
 /**
  * Fixed-window rate limiter on Workers KV — an ABUSE CAP, not a precise quota.
@@ -12,10 +22,10 @@ import type { Env } from '../env'
  * needing exact counting belongs in a Durable Object, which the template deliberately avoids
  * until an app opts in.
  *
- * Keying: `rl:<route>:<userId|ip>:<windowStart>` — signed-in callers are limited per user
- * (stable across devices/IPs), anonymous callers per connecting IP (cf-connecting-ip is set by
- * Cloudflare at the edge and can't be spoofed by the client). Each key expires shortly after its
- * window so KV self-cleans.
+ * Keying: `rl:<appSlug>:<route>:<userId|ip>:<windowStart>` — the appSlug guards against namespace
+ * sharing; signed-in callers are limited per user (stable across devices/IPs), anonymous callers
+ * per connecting IP (cf-connecting-ip is set by Cloudflare at the edge and can't be spoofed by the
+ * client). Each key expires shortly after its window so KV self-cleans.
  */
 export function rateLimit(
   route: string,
@@ -31,7 +41,7 @@ export function rateLimit(
 
     const nowSeconds = Math.floor(Date.now() / 1000)
     const windowStart = Math.floor(nowSeconds / windowSeconds) * windowSeconds
-    const key = `rl:${route}:${caller}:${windowStart}`
+    const key = `rl:${APP_SLUG}:${route}:${caller}:${windowStart}`
 
     try {
       const count = Number((await kv.get(key)) ?? '0')

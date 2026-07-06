@@ -44,7 +44,7 @@ import type { Chore } from '@/lib/db/schema'
 /**
  * Chore detail — read the fields + checklist, edit inline (entered via ?edit, reusing the create
  * form's field block from app/chores/new.tsx), and soft-delete behind a confirm Dialog. Edit/Delete
- * affordances are gated on can('createChores'); a member without the permission sees a read-only
+ * affordances are gated on can('chore:create'); a member without the permission sees a read-only
  * view. Difficulty renders per ui.difficultyDisplay; the AI-verification toggle only appears when
  * features.aiVerification is on. When a minted app grows a third copy of the field block, extract a
  * shared <ChoreForm> into src/components/.
@@ -128,7 +128,7 @@ export default function ChoreDetailScreen() {
   const categoriesQuery = useChoreCategories(orgId ?? '')
   const chore = query.data
 
-  const canEdit = can('createChores')
+  const canEdit = can('chore:create')
   const display = ui?.difficultyDisplay ?? 'text'
   const showStars = display === 'stars'
   const showAi = features?.aiVerification ?? false
@@ -206,7 +206,7 @@ export default function ChoreDetailScreen() {
   }
 
   // --- Assign + rotation: the "hand this chore to someone" flows (gated on assignChores) ---
-  const canAssign = can('assignChores')
+  const canAssign = can('chore:assign')
   const createAssignment = useCreateAssignment(orgId ?? '')
   const createRotation = useCreateRotation(orgId ?? '')
   const today = todayLocal()

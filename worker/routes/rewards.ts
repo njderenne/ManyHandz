@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { can } from '@/lib/config/modes'
 import { requireTier } from '../entitlements'
 import { POINTS_KIND } from './household'
@@ -26,7 +26,7 @@ import { POINTS_KIND } from './household'
  *   POST   /api/organizations/:orgId/reward-redemptions/:id/approve → approve       (approveCompletions)
  *   POST   /api/organizations/:orgId/reward-redemptions/:id/reject  → reject+refund (approveCompletions)
  */
-export const rewardRoutes = new Hono<HouseholdEnv>()
+export const rewardRoutes = new Hono<AuthEnv>()
 
 const rewardCreate = z.object({
   name: z.string().trim().min(1).max(100),
@@ -38,7 +38,7 @@ const rewardUpdate = rewardCreate.partial()
 
 /** The caller's (a user's) current points balance — SUM(delta) over the credit ledger, kind=points. */
 async function pointsBalance(
-  env: HouseholdEnv['Bindings'],
+  env: AuthEnv['Bindings'],
   orgId: string,
   userId: string,
 ): Promise<number> {
@@ -67,8 +67,9 @@ rewardRoutes.get('/:orgId/rewards', requireOrg, async (c) => {
   return c.json(rows)
 })
 
-rewardRoutes.post('/:orgId/rewards', requireOrg, requirePermission('createRewards'), async (c) => {
-  const { orgId, memberId } = c.get('household')
+rewardRoutes.post('/:orgId/rewards', requireOrg, requireCapability('reward:create'), async (c) => {
+  const orgId = c.get('orgId')
+  const memberId = c.get('orgMemberId')
   // Paid: the rewards/allowance/points economy is a Premium feature. Server-side gate (the client's
   // TierGate only decorates) — trialing/grace orgs pass via requireTier.
   const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
@@ -92,8 +93,8 @@ rewardRoutes.post('/:orgId/rewards', requireOrg, requirePermission('createReward
   return c.json(row, 201)
 })
 
-rewardRoutes.patch('/:orgId/rewards/:rewardId', requireOrg, requirePermission('createRewards'), async (c) => {
-  const { orgId } = c.get('household')
+rewardRoutes.patch('/:orgId/rewards/:rewardId', requireOrg, requireCapability('reward:create'), async (c) => {
+  const orgId = c.get('orgId')
   const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
   if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const rewardId = c.req.param('rewardId')
@@ -119,8 +120,8 @@ rewardRoutes.patch('/:orgId/rewards/:rewardId', requireOrg, requirePermission('c
   return c.json(row)
 })
 
-rewardRoutes.delete('/:orgId/rewards/:rewardId', requireOrg, requirePermission('createRewards'), async (c) => {
-  const { orgId } = c.get('household')
+rewardRoutes.delete('/:orgId/rewards/:rewardId', requireOrg, requireCapability('reward:create'), async (c) => {
+  const orgId = c.get('orgId')
   const gate = await requireTier(getDb(c.env.DATABASE_URL), orgId, 'STANDARD')
   if (!gate.ok) return c.json({ error: gate.reason }, 402)
   const rewardId = c.req.param('rewardId')
@@ -136,8 +137,9 @@ rewardRoutes.delete('/:orgId/rewards/:rewardId', requireOrg, requirePermission('
 
 // --- Redemption ---
 
-rewardRoutes.post('/:orgId/rewards/:rewardId/redeem', requireOrg, requirePermission('redeemRewards'), async (c) => {
-  const ctx = c.get('household')
+rewardRoutes.post('/:orgId/rewards/:rewardId/redeem', requireOrg, requireCapability('reward:redeem'), async (c) => {
+  const ctx = await householdContext(c)
+  if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   // Paid: redeeming points for rewards is the Premium engagement economy.
   const gate = await requireTier(db, ctx.orgId, 'STANDARD')
@@ -272,7 +274,7 @@ rewardRoutes.get('/:orgId/reward-redemptions', requireOrg, async (c) => {
 })
 
 /** Load a redemption (+ the redeemer's user id, for refunds) scoped to the org. */
-async function loadPendingRedemption(env: HouseholdEnv['Bindings'], orgId: string, redemptionId: string) {
+async function loadPendingRedemption(env: AuthEnv['Bindings'], orgId: string, redemptionId: string) {
   const [row] = await getDb(env.DATABASE_URL)
     .select({
       id: schema.rewardRedemption.id,
@@ -290,8 +292,8 @@ async function loadPendingRedemption(env: HouseholdEnv['Bindings'], orgId: strin
 }
 
 rewardRoutes.post('/:orgId/reward-redemptions/:id/approve', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:approve')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const gate = await requireTier(db, ctx.orgId, 'STANDARD')
   if (!gate.ok) return c.json({ error: gate.reason }, 402)
@@ -308,8 +310,8 @@ rewardRoutes.post('/:orgId/reward-redemptions/:id/approve', requireOrg, async (c
 })
 
 rewardRoutes.post('/:orgId/reward-redemptions/:id/reject', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
-  if (!ctx || !can(ctx.mode, ctx.householdRole, 'approveCompletions')) return c.json({ error: 'forbidden' }, 403)
+  const ctx = await householdContext(c)
+  if (!ctx || !can(ctx.mode, ctx.householdRole, 'completion:approve')) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const redemption = await loadPendingRedemption(c.env, ctx.orgId, c.req.param('id'))
   if (!redemption) return c.json({ error: 'not found' }, 404)

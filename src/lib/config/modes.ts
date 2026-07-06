@@ -1,22 +1,32 @@
+import {
+  KIND_CONFIGS,
+  KINDS,
+  can as canCapability,
+  canWithPolicy,
+  roleForJoin as roleForJoinKind,
+  selectableKinds,
+  type Capability,
+  type Kind,
+  type KindConfig,
+} from './roles'
+
 /**
- * HOUSEHOLD MODES — the spine of ManyHandz.
+ * HOUSEHOLD MODES — ManyHandz's typed view over the tenancy spine.
  *
- * One product, three modes (family / roommate / office). A household's `mode` (a column on the
- * organization) drives the ENTIRE UX through a per-mode `ModeConfig`: feature flags, UI tone, and a
- * per-role permission matrix. Components AND Worker routes read this config — they NEVER branch on
- * raw `mode`/`role` strings. Adding a new mode is a single entry here.
+ * SPINE §10.3 CONVERGENCE NOTE: this file used to OWN the 3-mode spine (MODE_CONFIGS × 19-permission
+ * boolean matrices × canWithHousehold). That authority now lives in `src/lib/config/roles.ts`
+ * (KIND_CONFIGS — `mode` IS `organization.kind`; permissions are capability lists; the two-layer
+ * kid gating is policyGates + worker/lib/policy.ts POLICY_FLAGS, enforced by requireCapability).
+ * What remains here is a THIN, DATA-FREE derived layer: the app-typed FeatureFlags/UiConfig shapes
+ * and mode-vocabulary helpers ManyHandz screens consume. Nothing in this file declares a grant —
+ * change permissions in roles.ts only.
  *
- * This file is PURE (no React / React Native / lucide imports) so the Worker can import it to
- * re-derive permissions server-side — the client mirror is never the authority. The mode-aware
- * navigation tabs (which need icon components) live in the client-only `mode-nav.ts`.
- *
- * Two-layer kid gating: the matrix grants kids `giftPoints`/`createCompetitions`/`createChallenges`
- * at the BASE level, but household toggles (`allowKidGifting`, etc.) are authoritative at runtime.
- * Resolve the effective permission with `canWithHousehold()`.
+ * Still PURE (no React / RN / lucide imports) so the Worker may import it. Mode-aware navigation
+ * moved to navigation.ts (NAV_BY_CONTEXT / navForContext).
  */
 
-export const HOUSEHOLD_MODES = ['family', 'roommate', 'office'] as const
-export type HouseholdMode = (typeof HOUSEHOLD_MODES)[number]
+export const HOUSEHOLD_MODES = KINDS
+export type HouseholdMode = Kind
 
 export const HOUSEHOLD_ROLES = ['parent', 'kid', 'roommate', 'manager', 'colleague'] as const
 export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number]
@@ -49,33 +59,13 @@ export type UiConfig = {
   showPointsProminent: boolean // points front-and-center vs lightweight text
 }
 
-/** The 19 gated actions. `isAdmin` is derived purely as `editHouseholdSettings` (brief §3). */
-export const PERMISSION_KEYS = [
-  'createChores', // create / edit / delete chores
-  'createRotations',
-  'assignChores',
-  'viewAllAssignments',
-  'markOwnComplete', // may route through approval (see approvalWorkflow + householdRole)
-  'submitPhotoProof',
-  'approveCompletions',
-  'createRewards',
-  'redeemRewards', // may route through approval
-  'createGoalsForAnyone', // false but createGoalsForSelf still allowed where goals enabled
-  'contributeToOwnGoals',
-  'inviteMembers',
-  'changeRoles',
-  'editHouseholdSettings', // == isAdmin
-  'accessBilling',
-  'createChallenges',
-  'giftPoints', // kids: also gated by household.allowKidGifting
-  'createCompetitions', // kids: also gated by household.allowKidCompetitions
-  'configureAi',
-] as const
-export type Permission = (typeof PERMISSION_KEYS)[number]
-export type PermissionMatrix = Record<Permission, boolean>
+/** Gated actions are now spine capabilities (domain:verb) — see roles.ts for the rename map. */
+export type Permission = Capability
+export type PermissionMatrix = Record<string, boolean>
 
+/** The screen-facing per-mode view (label flattened to the singular string, as screens render it). */
 export type ModeConfig = {
-  enabled: boolean // office is defined but hidden from the create-household picker
+  enabled: boolean
   label: string
   description: string
   roles: readonly HouseholdRole[]
@@ -83,115 +73,37 @@ export type ModeConfig = {
   defaultJoinerRole: HouseholdRole
   features: FeatureFlags
   ui: UiConfig
-  permissions: Record<string, PermissionMatrix> // keyed by HouseholdRole
+  permissions: Record<string, readonly Capability[]>
 }
 
-// --- Permission helpers (build matrices without 19-line literals everywhere) ---
-
-const NO_PERMS: PermissionMatrix = Object.fromEntries(
-  PERMISSION_KEYS.map((k) => [k, false]),
-) as PermissionMatrix
-
-function perms(overrides: Partial<PermissionMatrix>): PermissionMatrix {
-  return { ...NO_PERMS, ...overrides }
+function toModeConfig(cfg: KindConfig): ModeConfig {
+  return {
+    enabled: cfg.enabled !== false,
+    label: cfg.label.singular,
+    description: cfg.description ?? '',
+    roles: cfg.roles as readonly HouseholdRole[],
+    creatorRole: cfg.creatorRole as HouseholdRole,
+    defaultJoinerRole: cfg.defaultJoinerRole as HouseholdRole,
+    features: cfg.features as FeatureFlags,
+    ui: cfg.ui as UiConfig,
+    permissions: cfg.permissions,
+  }
 }
 
-// Family parent — full admin.
-const FAMILY_PARENT: PermissionMatrix = perms({
-  createChores: true, createRotations: true, assignChores: true, viewAllAssignments: true,
-  markOwnComplete: true, submitPhotoProof: true, approveCompletions: true, createRewards: true,
-  redeemRewards: true, createGoalsForAnyone: true, contributeToOwnGoals: true, inviteMembers: true,
-  changeRoles: true, editHouseholdSettings: true, accessBilling: true, createChallenges: true,
-  giftPoints: true, createCompetitions: true, configureAi: true,
-})
+/** Derived view of KIND_CONFIGS — roles.ts is the source of truth. */
+export const MODE_CONFIGS: Record<HouseholdMode, ModeConfig> = Object.fromEntries(
+  KINDS.map((k) => [k, toModeConfig(KIND_CONFIGS[k])]),
+) as Record<HouseholdMode, ModeConfig>
 
-// Family kid — restricted; gift/compete are base-true but household-toggle gated.
-const FAMILY_KID: PermissionMatrix = perms({
-  viewAllAssignments: true, markOwnComplete: true, submitPhotoProof: true, redeemRewards: true,
-  contributeToOwnGoals: true, giftPoints: true, createCompetitions: true,
-})
-
-// Roommate — equal peers; everything except rewards/goals/approvals (which don't exist in this mode).
-const ROOMMATE: PermissionMatrix = perms({
-  createChores: true, createRotations: true, assignChores: true, viewAllAssignments: true,
-  markOwnComplete: true, submitPhotoProof: true, inviteMembers: true, changeRoles: true,
-  editHouseholdSettings: true, accessBilling: true, createChallenges: true, giftPoints: true,
-  createCompetitions: true, configureAi: true,
-})
-
-// Office manager — admin minus gamification/approvals/rewards/goals/challenges/competitions/gifting/AI.
-const OFFICE_MANAGER: PermissionMatrix = perms({
-  createChores: true, createRotations: true, assignChores: true, viewAllAssignments: true,
-  markOwnComplete: true, submitPhotoProof: true, inviteMembers: true, changeRoles: true,
-  editHouseholdSettings: true, accessBilling: true,
-})
-
-// Office colleague — create/edit chores + do own work; nothing administrative.
-const OFFICE_COLLEAGUE: PermissionMatrix = perms({
-  createChores: true, viewAllAssignments: true, markOwnComplete: true, submitPhotoProof: true,
-})
-
-// --- The three mode configs ---
-
-export const MODE_CONFIGS: Record<HouseholdMode, ModeConfig> = {
-  family: {
-    enabled: true,
-    label: 'Family',
-    description: 'Parents manage chores; kids earn points, levels, and rewards.',
-    roles: ['parent', 'kid'],
-    creatorRole: 'parent',
-    defaultJoinerRole: 'kid',
-    features: {
-      gamification: true, rewards: true, goals: true, approvalWorkflow: true, leaderboard: true,
-      photoProofDefault: true, fairnessScoring: true, paymentHandles: true, bonusChallenges: true,
-      pointGifting: true, weeklyReportCard: true, birthdaySystem: true, accentColors: true,
-      headToHead: true, aiVerification: true, speedBonus: true,
-    },
-    ui: { difficultyDisplay: 'stars', completionAnimation: 'confetti', tonePlayful: true, showPointsProminent: true },
-    permissions: { parent: FAMILY_PARENT, kid: FAMILY_KID },
-  },
-  roommate: {
-    enabled: true,
-    label: 'Roommates',
-    description: 'Equal housemates sharing responsibilities fairly.',
-    roles: ['roommate'],
-    creatorRole: 'roommate',
-    defaultJoinerRole: 'roommate',
-    features: {
-      gamification: false, rewards: false, goals: false, approvalWorkflow: false, leaderboard: false,
-      photoProofDefault: false, fairnessScoring: true, paymentHandles: true, bonusChallenges: true,
-      pointGifting: true, weeklyReportCard: true, birthdaySystem: true, accentColors: true,
-      headToHead: true, aiVerification: true, speedBonus: true,
-    },
-    ui: { difficultyDisplay: 'text', completionAnimation: 'checkmark', tonePlayful: false, showPointsProminent: false },
-    permissions: { roommate: ROOMMATE },
-  },
-  office: {
-    enabled: false, // defined for the future; hidden from the create-household picker
-    label: 'Office',
-    description: 'Professional task tracking, no gamification.',
-    roles: ['manager', 'colleague'],
-    creatorRole: 'manager',
-    defaultJoinerRole: 'colleague',
-    features: {
-      gamification: false, rewards: false, goals: false, approvalWorkflow: false, leaderboard: false,
-      photoProofDefault: false, fairnessScoring: true, paymentHandles: false, bonusChallenges: false,
-      pointGifting: false, weeklyReportCard: true, birthdaySystem: false, accentColors: true,
-      headToHead: false, aiVerification: false, speedBonus: false,
-    },
-    ui: { difficultyDisplay: 'text', completionAnimation: 'checkmark', tonePlayful: false, showPointsProminent: false },
-    permissions: { manager: OFFICE_MANAGER, colleague: OFFICE_COLLEAGUE },
-  },
-}
-
-/** Household policy toggles that gate kid actions a second time (authoritative at runtime). */
+/** Household policy toggles that gate kid actions a second time (authoritative at runtime).
+ *  Mirrors worker/lib/policy.ts POLICY_FLAGS — the Worker consults them via requireCapability. */
 export type HouseholdKidPolicy = {
   allowKidGifting: boolean
   allowKidChallenges: boolean
   allowKidCompetitions: boolean
 }
 
-// --- Pure resolvers (the same logic the Worker uses) ---
+// --- Pure resolvers (thin wrappers over roles.ts — the same logic the Worker enforces) ---
 
 export function getModeConfig(mode: HouseholdMode): ModeConfig {
   return MODE_CONFIGS[mode]
@@ -206,46 +118,40 @@ export function uiFor(mode: HouseholdMode): UiConfig {
 }
 
 export function permissionsFor(mode: HouseholdMode, role: HouseholdRole): PermissionMatrix {
-  return MODE_CONFIGS[mode].permissions[role] ?? NO_PERMS
+  const granted = MODE_CONFIGS[mode]?.permissions[role] ?? []
+  return Object.fromEntries(granted.map((c) => [c, true]))
 }
 
-/** Base permission check (the mode matrix only). Use `canWithHousehold` where kid toggles apply. */
-export function can(mode: HouseholdMode, role: HouseholdRole, permission: Permission): boolean {
-  return permissionsFor(mode, role)[permission] === true
+/** Base capability check (the kind matrix only). Use `canWithHousehold` where kid toggles apply. */
+export function can(mode: string, role: string, permission: Capability): boolean {
+  return canCapability(mode, role, permission)
 }
 
-/** isAdmin is exactly `editHouseholdSettings` (brief §3). */
-export function isAdmin(mode: HouseholdMode, role: HouseholdRole): boolean {
-  return can(mode, role, 'editHouseholdSettings')
+/** isAdmin is exactly the old `editHouseholdSettings` grant — now the org:settings capability. */
+export function isAdmin(mode: string, role: string): boolean {
+  return canCapability(mode, role, 'org:settings')
 }
 
 /**
- * Effective permission with the household's second-layer kid toggles applied. For a family kid,
- * `giftPoints`/`createCompetitions`/`createChallenges` also require the matching household policy
- * flag; everything else is the base matrix. The Worker calls this same function before any mutation.
+ * Effective permission with the household's second-layer kid toggles applied — the client mirror
+ * of requireCapability's policy step (POLICY_FLAGS). For a family kid, `points:gift` /
+ * `competition:create` / `challenge:create` also require the matching household policy flag.
  */
 export function canWithHousehold(
-  mode: HouseholdMode,
-  role: HouseholdRole,
-  permission: Permission,
+  mode: string,
+  role: string,
+  permission: Capability,
   policy: HouseholdKidPolicy,
 ): boolean {
-  if (!can(mode, role, permission)) return false
-  if (mode === 'family' && role === 'kid') {
-    if (permission === 'giftPoints') return policy.allowKidGifting
-    if (permission === 'createCompetitions') return policy.allowKidCompetitions
-    if (permission === 'createChallenges') return policy.allowKidChallenges
-  }
-  return true
+  return canWithPolicy(mode, role, permission, policy as unknown as Record<string, boolean>)
 }
 
 /** Role assigned to a member when they create vs join a household of this mode. */
-export function roleForJoin(mode: HouseholdMode, isCreator: boolean): HouseholdRole {
-  const cfg = MODE_CONFIGS[mode]
-  return isCreator ? cfg.creatorRole : cfg.defaultJoinerRole
+export function roleForJoin(mode: string, isCreator: boolean): HouseholdRole {
+  return roleForJoinKind(mode, isCreator) as HouseholdRole
 }
 
 /** Modes a user may pick when creating a household (office is hidden until enabled). */
 export function selectableModes(): Array<ModeConfig & { mode: HouseholdMode }> {
-  return HOUSEHOLD_MODES.map((m) => ({ mode: m, ...MODE_CONFIGS[m] })).filter((c) => c.enabled)
+  return selectableKinds().map((c) => ({ mode: c.kind, ...toModeConfig(c) }))
 }

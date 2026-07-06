@@ -14,7 +14,7 @@ import {
   type PermissionMatrix,
   type UiConfig,
 } from '@/lib/config/modes'
-import { navTabsFor, type ModeNavTab } from '@/lib/config/mode-nav'
+import { navForContext, type NavItem } from '@/lib/config/navigation'
 
 /** The active organization (household) id from the Better-Auth session, or undefined when none. */
 export function useActiveOrgId(): string | undefined {
@@ -33,7 +33,7 @@ export type HouseholdModeState = {
   config: ModeConfig | undefined
   features: FeatureFlags | undefined
   ui: UiConfig | undefined
-  navTabs: ModeNavTab[]
+  navTabs: NavItem[]
   permissions: PermissionMatrix | undefined
   /** Effective permission check (mode matrix + the household's kid toggles). Fail-closed until ready. */
   can: (permission: Permission) => boolean
@@ -69,7 +69,7 @@ export function useHouseholdMode(): HouseholdModeState {
     config: mode ? getModeConfig(mode) : undefined,
     features: mode ? featuresFor(mode) : undefined,
     ui: mode ? uiFor(mode) : undefined,
-    navTabs: mode && role ? navTabsFor(mode, role) : [],
+    navTabs: mode && role ? navForContext(mode, role) : [],
     permissions: mode && role ? permissionsFor(mode, role) : undefined,
     can: (permission) => (mode && role ? canWithHousehold(mode, role, permission, policy) : false),
   }

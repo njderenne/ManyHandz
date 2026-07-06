@@ -3,6 +3,7 @@ import { organizationClient } from 'better-auth/client/plugins'
 import { expoClient } from '@better-auth/expo/client'
 import * as SecureStore from 'expo-secure-store'
 import { API_BASE_URL } from '@/lib/api/base-url'
+import { ORG_ADDITIONAL_FIELDS } from '@/lib/auth/org-fields'
 
 /**
  * Better-Auth client for Expo (React Native).
@@ -17,7 +18,10 @@ import { API_BASE_URL } from '@/lib/api/base-url'
 export const authClient = createAuthClient({
   baseURL: API_BASE_URL,
   plugins: [
-    organizationClient(),
+    // additionalFields mirror worker/auth.ts (via the shared org-fields.ts declaration) so
+    // `activeOrg.kind` is typed on the active-org / org-list atoms — the context layer
+    // (src/lib/context/*) branches on kind (SPINE_SPEC §3.4).
+    organizationClient({ schema: { organization: { additionalFields: ORG_ADDITIONAL_FIELDS } } }),
     expoClient({
       scheme: 'manyhandz',
       storagePrefix: 'manyhandz',

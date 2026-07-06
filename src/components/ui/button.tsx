@@ -28,9 +28,9 @@ const buttonVariants = cva('flex-row items-center justify-center gap-2 rounded-m
       ghost: 'bg-transparent active:bg-accent',
     },
     size: {
-      sm: 'h-9 px-3',
-      default: 'h-11 px-4',
-      lg: 'h-12 px-6',
+      sm: 'h-11 px-3',
+      default: 'h-12 px-4',
+      lg: 'h-14 px-6',
     },
   },
   defaultVariants: { variant: 'default', size: 'default' },

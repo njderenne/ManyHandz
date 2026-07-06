@@ -31,7 +31,29 @@ export default function AcceptInviteScreen() {
     try {
       if (kind === 'accept') {
         const res = await organization.acceptInvitation({ invitationId: id })
-        if (res.error) throw new Error(res.error.message)
+        if (res.error) {
+          // Already-accepted tolerance: a server-side safety net (e.g. an email-match auto-accept on
+          // session create) may have claimed this exact invite before the user tapped, so re-accepting
+          // now throws INVITATION_NOT_FOUND. That's not a failure — the user DID join. Confirm by
+          // resolving membership and, if they're in an org, treat it as success instead of surfacing a
+          // spurious error toast. Genuine errors (YOU_ARE_NOT_THE_RECIPIENT, MEMBERSHIP_LIMIT_REACHED)
+          // still surface below.
+          const code = res.error.code ?? ''
+          const message = res.error.message ?? ''
+          const looksAlreadyAccepted =
+            code.includes('INVITATION_NOT_FOUND') || /not found/i.test(message)
+          if (looksAlreadyAccepted) {
+            const orgs = await organization.list().catch(() => null)
+            const joinedOrgId = orgs?.data?.[0]?.id
+            if (joinedOrgId) {
+              await organization.setActive({ organizationId: joinedOrgId }).catch(() => {})
+              toast({ title: `Welcome to the ${APP_CONFIG.tenant.singular.toLowerCase()}!`, variant: 'success' })
+              router.replace('/team')
+              return
+            }
+          }
+          throw new Error(res.error.message)
+        }
         // Land the user IN the org they just joined; if this hiccups, tapping it in the list works.
         const orgId = res.data?.invitation?.organizationId
         if (orgId) await organization.setActive({ organizationId: orgId }).catch(() => {})

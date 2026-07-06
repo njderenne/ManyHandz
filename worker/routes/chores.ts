@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, count, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+
 import { requireTier } from '../entitlements'
 import { createAI } from '../ai'
 import { describeReference } from '../ai/verify-photos'
@@ -16,7 +16,7 @@ import { APP_CONFIG } from '@/lib/config/app'
  * time. Runs on create/edit when the reference photo is set or changed; clears the rubric when removed.
  */
 async function refreshRubric(
-  env: HouseholdEnv['Bindings'],
+  env: AuthEnv['Bindings'],
   orgId: string,
   chore: { id: string; name: string; description: string | null; referencePhotoMediaId: string | null },
 ): Promise<void> {
@@ -51,7 +51,7 @@ async function refreshRubric(
 /**
  * Chores — the reusable chore definitions for a household. The canonical ManyHandz resource route:
  * org-scoped reads (every member sees the library), mode-permission-gated writes
- * (`requirePermission('createChores')` — parents/roommates/managers, never kids). Soft delete via
+ * (`requireCapability('chore:create')` — parents/roommates/managers, never kids). Soft delete via
  * isActive. Pairs with src/lib/query/hooks/useChores.ts.
  *
  *   GET    /api/organizations/:orgId/chores            → active chores, newest first
@@ -60,7 +60,7 @@ async function refreshRubric(
  *   PATCH  /api/organizations/:orgId/chores/:choreId   → edit          (createChores)
  *   DELETE /api/organizations/:orgId/chores/:choreId   → soft delete   (createChores)
  */
-export const choreRoutes = new Hono<HouseholdEnv>()
+export const choreRoutes = new Hono<AuthEnv>()
 
 const checklistSchema = z
   .array(z.object({ label: z.string().trim().min(1).max(120), required: z.boolean() }))
@@ -82,7 +82,7 @@ const choreCreate = z.object({
 const choreUpdate = choreCreate.partial()
 
 /** Confirm a category belongs to this household (or is cleared). Returns false on a foreign id. */
-async function categoryOk(env: HouseholdEnv['Bindings'], orgId: string, categoryId: string | null | undefined) {
+async function categoryOk(env: AuthEnv['Bindings'], orgId: string, categoryId: string | null | undefined) {
   if (!categoryId) return true
   const [cat] = await getDb(env.DATABASE_URL)
     .select({ id: schema.choreCategory.id })
@@ -113,8 +113,9 @@ choreRoutes.get('/:orgId/chores/:choreId', requireOrg, async (c) => {
   return c.json(row)
 })
 
-choreRoutes.post('/:orgId/chores', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId, memberId } = c.get('household')
+choreRoutes.post('/:orgId/chores', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
+  const memberId = c.get('orgMemberId')
   const db = getDb(c.env.DATABASE_URL)
 
   // Free-tier cap: a FREE household keeps up to APP_CONFIG.monetization.limits.lists active chores;
@@ -163,8 +164,8 @@ choreRoutes.post('/:orgId/chores', requireOrg, requirePermission('createChores')
   return c.json(row, 201)
 })
 
-choreRoutes.patch('/:orgId/chores/:choreId', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId } = c.get('household')
+choreRoutes.patch('/:orgId/chores/:choreId', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
   const choreId = c.req.param('choreId')
   const parsed = choreUpdate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -203,8 +204,8 @@ choreRoutes.patch('/:orgId/chores/:choreId', requireOrg, requirePermission('crea
   return c.json(row)
 })
 
-choreRoutes.delete('/:orgId/chores/:choreId', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId } = c.get('household')
+choreRoutes.delete('/:orgId/chores/:choreId', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
   const choreId = c.req.param('choreId')
   const [row] = await getDb(c.env.DATABASE_URL)
     .update(schema.chore)
@@ -234,8 +235,8 @@ const categoryInput = z.object({
   color: z.string().max(24).optional(),
 })
 
-choreRoutes.post('/:orgId/chore-categories', requireOrg, requirePermission('createChores'), async (c) => {
-  const { orgId } = c.get('household')
+choreRoutes.post('/:orgId/chore-categories', requireOrg, requireCapability('chore:create'), async (c) => {
+  const orgId = c.get('orgId')
   const parsed = categoryInput.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const [row] = await getDb(c.env.DATABASE_URL)

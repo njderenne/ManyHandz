@@ -43,7 +43,7 @@ import { t } from '@/lib/i18n'
  * EmptyState rather than the store. Three in-page tabs — Rewards (a point-priced catalog kids
  * redeem against their balance), Achievements (the code-defined catalog + the household's badge
  * library), and an optional Leaderboard (members ranked by XP, only when the feature is on AND the
- * household has it visible). Parents (can('approveCompletions')) also get a pending-redemptions
+ * household has it visible). Parents (can('completion:approve')) also get a pending-redemptions
  * approve/reject queue above the catalog. Every write affordance is gated by can(); the Worker
  * enforces — this only mirrors it for UI.
  */
@@ -104,7 +104,7 @@ export default function RewardsScreen() {
           // Paid (Premium): the rewards/allowance/points economy. TierGate only decorates — the
           // Worker (worker/routes/rewards.ts) is the real gate. Achievements/Leaderboard stay free.
           <TierGate min="STANDARD">
-            <RewardsTab orgId={orgId ?? ''} userId={session?.user.id} canRedeem={can('redeemRewards')} canManage={can('createRewards')} canApprove={can('approveCompletions')} />
+            <RewardsTab orgId={orgId ?? ''} userId={session?.user.id} canRedeem={can('reward:redeem')} canManage={can('reward:create')} canApprove={can('completion:approve')} />
           </TierGate>
         ) : tab === 'achievements' ? (
           <AchievementsTab orgId={orgId ?? ''} />

@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, desc, eq, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { resolveHousehold, type HouseholdContext, type HouseholdEnv } from '../household'
+import { requireOrg, audit, type AuthEnv } from '../middleware/org'
+import { householdContext, type HouseholdContext } from '../lib/household-context'
 import { can } from '@/lib/config/modes'
 
 /**
@@ -23,12 +23,12 @@ import { can } from '@/lib/config/modes'
  *   POST   /api/organizations/:orgId/polls/:pollId/vote  → toggle a vote (any member)
  *   POST   /api/organizations/:orgId/polls/:pollId/close  → close    (admin)
  */
-export const pollRoutes = new Hono<HouseholdEnv>()
+export const pollRoutes = new Hono<AuthEnv>()
 
 /** Write gate for polls. There is no dedicated `createPolls` permission key, so we reuse the admin
  *  permission (`editHouseholdSettings`) — the matrix already encodes parents-only / roommates-all. */
 function canManagePolls(ctx: HouseholdContext): boolean {
-  return can(ctx.mode, ctx.householdRole, 'editHouseholdSettings')
+  return can(ctx.mode, ctx.householdRole, 'org:settings')
 }
 
 const pollCreate = z.object({
@@ -79,7 +79,7 @@ function shapePoll(
 }
 
 pollRoutes.get('/:orgId/polls', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const now = new Date()
@@ -111,7 +111,7 @@ pollRoutes.get('/:orgId/polls', requireOrg, async (c) => {
 })
 
 pollRoutes.get('/:orgId/polls/:pollId', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const pollId = c.req.param('pollId')
@@ -133,7 +133,7 @@ pollRoutes.get('/:orgId/polls/:pollId', requireOrg, async (c) => {
 })
 
 pollRoutes.post('/:orgId/polls', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx || !canManagePolls(ctx)) return c.json({ error: 'forbidden' }, 403)
   const parsed = pollCreate.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -165,7 +165,7 @@ pollRoutes.post('/:orgId/polls', requireOrg, async (c) => {
 const voteInput = z.object({ optionId: z.string().min(1).max(64) })
 
 pollRoutes.post('/:orgId/polls/:pollId/vote', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const pollId = c.req.param('pollId')
@@ -233,7 +233,7 @@ pollRoutes.post('/:orgId/polls/:pollId/vote', requireOrg, async (c) => {
 })
 
 pollRoutes.post('/:orgId/polls/:pollId/close', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx || !canManagePolls(ctx)) return c.json({ error: 'forbidden' }, 403)
   const db = getDb(c.env.DATABASE_URL)
   const pollId = c.req.param('pollId')
@@ -259,7 +259,7 @@ pollRoutes.post('/:orgId/polls/:pollId/close', requireOrg, async (c) => {
  * `isExpired` view. Exported for the weekly report cron ("auto-close expired polls"); call with the
  * org id (org-scoped) so it never sweeps another household's rows.
  */
-export async function autoCloseExpiredPolls(env: HouseholdEnv['Bindings'], orgId: string): Promise<number> {
+export async function autoCloseExpiredPolls(env: AuthEnv['Bindings'], orgId: string): Promise<number> {
   const result = await getDb(env.DATABASE_URL)
     .update(schema.householdPoll)
     .set({ isClosed: true })

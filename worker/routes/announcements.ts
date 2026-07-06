@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+
 
 /**
  * Announcements — pinned household notices (the dashboard banner). Org-scoped reads (every member
@@ -18,7 +18,7 @@ import { requirePermission, type HouseholdEnv } from '../household'
  *   PATCH  /api/organizations/:orgId/announcements/:announcementId → edit     (editHouseholdSettings)
  *   DELETE /api/organizations/:orgId/announcements/:announcementId → un-pin   (editHouseholdSettings)
  */
-export const announcementRoutes = new Hono<HouseholdEnv>()
+export const announcementRoutes = new Hono<AuthEnv>()
 
 const PRIORITIES = ['normal', 'important', 'urgent'] as const
 
@@ -57,9 +57,10 @@ announcementRoutes.get('/:orgId/announcements', requireOrg, async (c) => {
 announcementRoutes.post(
   '/:orgId/announcements',
   requireOrg,
-  requirePermission('editHouseholdSettings'),
+  requireCapability('org:settings'),
   async (c) => {
-    const { orgId, memberId } = c.get('household')
+    const orgId = c.get('orgId')
+  const memberId = c.get('orgMemberId')
     const parsed = announcementCreate.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
     const d = parsed.data
@@ -89,9 +90,9 @@ announcementRoutes.post(
 announcementRoutes.patch(
   '/:orgId/announcements/:announcementId',
   requireOrg,
-  requirePermission('editHouseholdSettings'),
+  requireCapability('org:settings'),
   async (c) => {
-    const { orgId } = c.get('household')
+    const orgId = c.get('orgId')
     const announcementId = c.req.param('announcementId')
     const parsed = announcementUpdate.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
@@ -125,9 +126,9 @@ announcementRoutes.patch(
 announcementRoutes.delete(
   '/:orgId/announcements/:announcementId',
   requireOrg,
-  requirePermission('editHouseholdSettings'),
+  requireCapability('org:settings'),
   async (c) => {
-    const { orgId } = c.get('household')
+    const orgId = c.get('orgId')
     const announcementId = c.req.param('announcementId')
     const [row] = await getDb(c.env.DATABASE_URL)
       .update(schema.announcement)

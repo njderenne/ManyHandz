@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { and, asc, eq, gte, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
-import { requireOrg, audit } from '../middleware/org'
-import { requirePermission, resolveHousehold, type HouseholdEnv } from '../household'
+import { requireOrg, audit, requireCapability, type AuthEnv } from '../middleware/org'
+import { householdContext } from '../lib/household-context'
 import { can } from '@/lib/config/modes'
 
 /**
@@ -17,7 +17,7 @@ import { can } from '@/lib/config/modes'
  *   GET   /api/organizations/:orgId/assignments/:id       → detail (+ chore basics)
  *   PATCH /api/organizations/:orgId/assignments/:id       → status / checklist / reassign / due
  */
-export const assignmentRoutes = new Hono<HouseholdEnv>()
+export const assignmentRoutes = new Hono<AuthEnv>()
 
 const choreCols = {
   choreName: schema.chore.name,
@@ -50,7 +50,7 @@ const patchInput = z.object({
 })
 
 /** Both the chore and the assignee must belong to this household. */
-async function refsOk(env: HouseholdEnv['Bindings'], orgId: string, choreId: string, memberId: string) {
+async function refsOk(env: AuthEnv['Bindings'], orgId: string, choreId: string, memberId: string) {
   const db = getDb(env.DATABASE_URL)
   const [ch] = await db.select({ id: schema.chore.id }).from(schema.chore)
     .where(and(eq(schema.chore.id, choreId), eq(schema.chore.organizationId, orgId), eq(schema.chore.isActive, true))).limit(1)
@@ -59,8 +59,8 @@ async function refsOk(env: HouseholdEnv['Bindings'], orgId: string, choreId: str
   return Boolean(ch && m)
 }
 
-assignmentRoutes.post('/:orgId/assignments', requireOrg, requirePermission('assignChores'), async (c) => {
-  const { orgId } = c.get('household')
+assignmentRoutes.post('/:orgId/assignments', requireOrg, requireCapability('chore:assign'), async (c) => {
+  const orgId = c.get('orgId')
   const parsed = createInput.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'invalid input', issues: parsed.error.issues }, 400)
   const d = parsed.data
@@ -141,7 +141,7 @@ assignmentRoutes.get('/:orgId/assignments/:id', requireOrg, async (c) => {
 })
 
 assignmentRoutes.patch('/:orgId/assignments/:id', requireOrg, async (c) => {
-  const ctx = await resolveHousehold(c)
+  const ctx = await householdContext(c)
   if (!ctx) return c.json({ error: 'forbidden' }, 403)
   const id = c.req.param('id')
   const db = getDb(c.env.DATABASE_URL)
@@ -153,7 +153,7 @@ assignmentRoutes.patch('/:orgId/assignments/:id', requireOrg, async (c) => {
   if (!current) return c.json({ error: 'not found' }, 404)
 
   const isAssignee = current.assignedToMemberId === ctx.memberId
-  const isManager = can(ctx.mode, ctx.householdRole, 'assignChores')
+  const isManager = can(ctx.mode, ctx.householdRole, 'chore:assign')
   if (!isAssignee && !isManager) return c.json({ error: 'forbidden' }, 403)
 
   const parsed = patchInput.safeParse(await c.req.json().catch(() => null))
