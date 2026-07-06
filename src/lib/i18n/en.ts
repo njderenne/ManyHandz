@@ -561,6 +561,11 @@ export const en = {
   'gps.permissionDenied': "Location permission is needed to track your route. Enable it in Settings and try again.",
   'gps.webLimited': "Browser tracking is limited — use the app for accurate routes.",
   'gps.noRoute': "No route recorded",
+  // Android foreground-service notification copy for background route tracking
+  // (src/lib/gps/live-tracker.ts references these via `as TranslationKey` casts — the casts can
+  // be dropped once the template exports them upstream). Dormant while features.gpsRoutes=false.
+  'gps.backgroundNotificationTitle': "Tracking your route",
+  'gps.backgroundNotificationBody': "ManyHandz is recording your route in the background.",
 
   'health.connect': "Connect {platform}",
   'health.notAvailable': "Available in the app",

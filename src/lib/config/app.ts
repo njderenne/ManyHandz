@@ -75,7 +75,17 @@ export const APP_CONFIG = {
      *  to 7 days (monthly/yearly keep 14) — William-approved 2026-07-06. */
     trialDays: 14,
     gracePeriodDays: 3,
-    /** The single sold plan lives in the STANDARD slot (see monetization) — trials lift to it. */
+    /**
+     * INTERIM (pre-Stripe-keys) value. The LOCKED grid (appfactory-manyhandz-pricing, 2026-06-25)
+     * is TWO paid tiers — Standard (weekly/monthly/yearly) + Premium (monthly/yearly, the AI-verify
+     * anchor) — with the 14-day trial unlocking PREMIUM so trials showcase AI. Until the Stripe/
+     * RevenueCat provisioning wave (memory task #7) lands, only the STANDARD slot is sold and every
+     * worker gate is requireTier STANDARD, so a STANDARD trial unlocks everything — identical
+     * behavior, simpler config. THAT WAVE MUST: flip trialTier→'PREMIUM', add 'PREMIUM' to
+     * sellableTiers, add manyhandz_premium_monthly/yearly to IAP_PRODUCT_TIERS
+     * (src/lib/config/entitlements.ts), and re-gate AI photo-verify (worker/routes/ai.ts) at
+     * PREMIUM. Do not treat the current values as the locked pricing decision.
+     */
     trialTier: 'STANDARD' as 'STANDARD' | 'PREMIUM',
     /**
      * Which org creations bootstrap an in-app trial (stamps trialing + trialEndsAt; paid features
@@ -135,7 +145,8 @@ export const APP_CONFIG = {
         },
       },
     },
-    /** Tiers the paywall SELLS — MH sells FREE + the one paid plan (BILLING §11.7 wave 1). */
+    /** Tiers the paywall SELLS — interim FREE + one paid plan (BILLING §11.7 wave 1). The locked
+     *  grid adds 'PREMIUM' at the Stripe/RevenueCat provisioning wave — see trialTier note above. */
     sellableTiers: ['FREE', 'STANDARD'] as ('FREE' | 'STANDARD' | 'PREMIUM')[],
     /** Freemium — never a hard wall. */
     requireSubscription: false,

@@ -59,11 +59,15 @@ export function aiLimitFor(feature: AiFeature, tier: Tier): number {
  */
 export const IAP_PRODUCT_TIERS = {
   /**
-   * ManyHandz locked grid (appfactory-manyhandz-pricing): the sold plan is "Premium" in the
-   * STANDARD slot — weekly $2.99 · monthly $5.99 · yearly $39.99. RevenueCat is NOT provisioned
-   * yet (no EXPO_PUBLIC_REVENUECAT_KEY, react-native-purchases not installed), so the native
-   * paywall renders the honest notice; when the dashboard is set up, the product ids registered
-   * there MUST match these keys (or update this map in the same change).
+   * INTERIM 3-SKU map — Standard slot only (weekly $2.99 · monthly $5.99 · yearly $39.99). The
+   * LOCKED grid (appfactory-manyhandz-pricing, 2026-06-25) is 5 SKUs across TWO paid tiers: the
+   * Stripe/RevenueCat provisioning wave must ADD manyhandz_premium_monthly ($9.99) and
+   * manyhandz_premium_yearly ($69.99) → 'PREMIUM' here (no premium weekly), alongside the
+   * app.ts flips (trialTier→PREMIUM, sellableTiers +PREMIUM, AI-verify gate→PREMIUM — see the
+   * trialTier note in src/lib/config/app.ts). RevenueCat is NOT provisioned yet (no
+   * EXPO_PUBLIC_REVENUECAT_KEY, react-native-purchases not installed), so the native paywall
+   * renders the honest notice; when the dashboard is set up, the product ids registered there
+   * MUST match these keys (or update this map in the same change).
    */
   manyhandz_standard_weekly: 'STANDARD',
   manyhandz_standard_monthly: 'STANDARD',

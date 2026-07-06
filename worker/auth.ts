@@ -200,7 +200,14 @@ export function createAuth(env: Env) {
     // B6: BETTER_AUTH_URL + apex/www + trailing-dot FQDN variants + workers.dev + the native
     // deep-link scheme + localhost dev origins (worker/lib/trusted-origins.ts). The scheme reads
     // from APP_CONFIG (MINOR-9) — single-sourced with app.json's `scheme`.
-    trustedOrigins: buildTrustedOrigins(env, { scheme: `${APP_CONFIG.scheme}://` }),
+    // MANYHANDZ extra: the dist-preview QA loop (.claude/launch.json serves the static web build
+    // on :4546) must pass Better-Auth's origin check too, not just the DEV_ORIGINS CORS allowlist
+    // in worker/index.ts — dev-gated on the same ENVIRONMENT switch so production never carries a
+    // standing localhost grant.
+    trustedOrigins: buildTrustedOrigins(env, {
+      scheme: `${APP_CONFIG.scheme}://`,
+      extra: env.ENVIRONMENT === 'development' ? ['http://localhost:4546'] : [],
+    }),
   })
 }
 
