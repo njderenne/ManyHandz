@@ -89,6 +89,14 @@ export interface Env {
   TWILIO_API_KEY_SECRET?: string
   TWILIO_FROM_NUMBER?: string          // E.164
   TWILIO_MESSAGING_SERVICE_SID?: string
+  // Deploy stamp — injected per-deploy by worker/deploy.js (`wrangler deploy --var GIT_SHA:… --var
+  // DEPLOYED_AT:…`), never hand-set in wrangler.toml. Absent under `wrangler dev` or a deploy that
+  // bypassed the wrapper — every reader must null-safe. Surfaced via GET /api/health and the
+  // Criterial config reporter's `deploy` block (deploy-drift detection).
+  /** Short git sha of the app-repo commit this Worker was deployed from. */
+  GIT_SHA?: string
+  /** ISO-8601 timestamp of the deploy. */
+  DEPLOYED_AT?: string
 }
 
 /**

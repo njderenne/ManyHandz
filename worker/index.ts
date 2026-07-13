@@ -114,7 +114,18 @@ app.use('/api/*', async (c, next) => {
   return next()
 })
 
-app.get('/api/health', (c) => c.json({ ok: true, service: 'manyhandz', version: VERSION, ts: Date.now() }))
+// gitSha/deployedAt = the deploy stamp (worker/deploy.js) — null under `wrangler dev` or a deploy
+// that bypassed the wrapper; honest absence, never a fake value.
+app.get('/api/health', (c) =>
+  c.json({
+    ok: true,
+    service: 'manyhandz',
+    version: VERSION,
+    gitSha: c.env.GIT_SHA ?? null,
+    deployedAt: c.env.DEPLOYED_AT ?? null,
+    ts: Date.now(),
+  }),
+)
 
 // Version metadata for the client force-update gate: the app compares its own version against
 // minAppVersion (a plain Worker var, set per deploy) and blocks usage until the store update

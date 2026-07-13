@@ -14,7 +14,8 @@ import { APP_CONFIG } from '@/lib/config/app'
  * Cloudflare secrets are write-only, so "a secret name exists" ≠ "it holds a real value".
  *
  *   GET /api/admin/config   (Authorization: Bearer ADMIN_METRICS_TOKEN)
- *   → { manifestVersion, appSlug, version, templateSeedCommit, env: [{ key, hasValue }, …] }
+ *   → { manifestVersion, appSlug, version, templateSeedCommit,
+ *       deploy: { gitSha, deployedAt }, env: [{ key, hasValue }, …] }
  *
  * Contract: criterial/docs/TEMPLATE_SYNC.md (manifest v2). Mounted ALWAYS (worker/index.ts →
  * app.route('/api/admin', adminConfigRoutes)) and dormant — 401 — until ADMIN_METRICS_TOKEN is
@@ -78,6 +79,13 @@ adminConfigRoutes.get('/config', (c) => {
     // Template-lineage stamp — null until the Phase-2 registry mints it; the field ships NOW so
     // Criterial's cross-check contract is stable (absent vs null vs sha are three honest states).
     templateSeedCommit: null,
+    // Deploy stamp — which app-repo commit this Worker was deployed from (worker/deploy.js injects
+    // GIT_SHA/DEPLOYED_AT per-deploy). null = no stamp (`wrangler dev`, or a deploy that bypassed
+    // the wrapper) — Criterial's deploy-drift detector renders that as "Not reporting", never green.
+    deploy: {
+      gitSha: c.env.GIT_SHA ?? null,
+      deployedAt: c.env.DEPLOYED_AT ?? null,
+    },
     env,
   })
 })

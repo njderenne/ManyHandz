@@ -6,7 +6,7 @@
   "description": "Cloudflare Worker (Hono) for ManyHandz — API, auth, webhooks. This manifest holds ONLY the Worker's build tooling (wrangler, drizzle-kit, workers-types) so the native app build never installs it (wrangler pulls `sharp`, which fails to compile on EAS iOS builders). Runtime deps (hono, drizzle-orm, better-auth, @neondatabase/serverless, …) live in the parent app's package.json and resolve via node's walk-up, keeping a single copy of each.",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node deploy.js",
     "deploy:dry": "wrangler deploy --dry-run --outdir .wrangler/dry",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",

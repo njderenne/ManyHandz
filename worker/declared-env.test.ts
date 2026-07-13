@@ -98,12 +98,14 @@ describe('GET /api/admin/config — Criterial reporter', () => {
       appSlug: string
       version: string
       templateSeedCommit: string | null
+      deploy: { gitSha: string | null; deployedAt: string | null }
       env: { key: string; hasValue: boolean }[]
     }
     expect(body.manifestVersion).toBe(2)
     expect(body.appSlug).toBe('manyhandz') // derived from APP_CONFIG.name; == wrangler name
     expect(typeof body.version).toBe('string')
     expect(body.templateSeedCommit).toBeNull() // Phase-2 registry fills it; the FIELD ships now
+    expect(body.deploy).toEqual({ gitSha: null, deployedAt: null }) // no stamp in this stub = honest nulls
     expect(body.env.map((e) => e.key)).toEqual([...DECLARED_ENV])
     const byKey = Object.fromEntries(body.env.map((e) => [e.key, e.hasValue]))
     expect(byKey.DATABASE_URL).toBe(true)
@@ -111,6 +113,18 @@ describe('GET /api/admin/config — Criterial reporter', () => {
     expect(byKey.STRIPE_SECRET_KEY).toBe(false) // undefined ≠ value
     // No values, ever — only key names + booleans leave the worker.
     expect(JSON.stringify(body)).not.toContain('postgres://real')
+  })
+
+  it('reports the deploy stamp when the wrapper injected GIT_SHA/DEPLOYED_AT', async () => {
+    const env = envStub({
+      ADMIN_METRICS_TOKEN: TOKEN,
+      GIT_SHA: 'abc1234',
+      DEPLOYED_AT: '2026-07-12T00:00:00.000Z',
+    })
+    const res = await getConfig(env, `Bearer ${TOKEN}`)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { deploy: { gitSha: string | null; deployedAt: string | null } }
+    expect(body.deploy).toEqual({ gitSha: 'abc1234', deployedAt: '2026-07-12T00:00:00.000Z' })
   })
 })
 
