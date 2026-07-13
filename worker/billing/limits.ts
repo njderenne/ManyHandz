@@ -96,11 +96,17 @@ export async function checkEntityCap(
  * (the data-ownership promise: the door is never locked on your own data). Call AFTER the EXIF
  * strip so the REAL stored size is counted, not the pre-strip upload size (routes/media.ts).
  * `limit`/`used` are reported in BYTES; the human copy speaks GB.
+ *
+ * `liftTier` mirrors checkEntityCap's param (default: the trial tier): an app can sell storage
+ * at a LOWER tier than its trial grants — keepsey's quota lifts at STANDARD ("Unlimited
+ * full-resolution photos" is a Plus promise) while its trialTier is PREMIUM, so the trial-tier
+ * default alone would 402 a paying Plus org. (Harvested from the keepsey fork, task_1d75efb3.)
  */
 export async function checkStorageQuota(
   db: DB,
   orgId: string,
   incomingBytes: number,
+  liftTier?: 'STANDARD' | 'PREMIUM',
 ): Promise<BillingCheck> {
   const gb = limitFor('mediaGb')
   if (gb === undefined) return { ok: true }
@@ -111,7 +117,7 @@ export async function checkStorageQuota(
     .where(eq(schema.media.organizationId, orgId))
   const used = Number(usage?.total ?? 0)
   if (used + incomingBytes <= quotaBytes) return { ok: true }
-  const lift = APP_CONFIG.subscription.trialTier
+  const lift = liftTier ?? APP_CONFIG.subscription.trialTier
   const gate = await requireTier(db, orgId, lift)
   if (gate.ok) return { ok: true }
   return {
