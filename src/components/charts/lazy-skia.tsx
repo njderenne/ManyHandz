@@ -1,6 +1,7 @@
 import { Platform } from 'react-native'
 import { Suspense, lazy, type ComponentType } from 'react'
 import { ChartEmpty } from './empty'
+import { loadSkiaWeb } from './skia-web-loader'
 
 /**
  * Lazy-after-load wrapper for the victory-native + Skia charts (projectgains donor).
@@ -24,23 +25,21 @@ import { ChartEmpty } from './empty'
  * frozen (the gated gallery imports them). The `-skia`-suffixed files are therefore the LAZY,
  * import-anywhere wrappers built with this loader. New screens should import the `-skia` variants.
  */
-const CANVASKIT_VERSION = '0.41.0' // keep in lockstep with node_modules/canvaskit-wasm
-
 let skiaWeb: Promise<unknown> | null = null
 
 /**
  * Resolve once Skia is usable: immediately on native, after CanvasKit downloads on web. Exported
  * so screens that gate a whole Skia subtree themselves (app/charts.tsx's showcase) share the one
- * version pin and the one in-flight promise instead of duplicating the LoadSkiaWeb ceremony.
+ * in-flight promise instead of duplicating the LoadSkiaWeb ceremony.
+ *
+ * The actual CanvasKit import lives in the platform-split ./skia-web-loader (.web.ts vs .ts):
+ * Metro resolves dynamic import() statically per platform bundle, so a direct import of
+ * `@shopify/react-native-skia/lib/module/web` here — even behind this Platform.OS guard — drags
+ * canvaskit-wasm (which imports node `fs`) into ios/android bundles and breaks the native build.
  */
 export function ensureSkiaWeb() {
   if (Platform.OS !== 'web') return Promise.resolve()
-  if (!skiaWeb)
-    skiaWeb = import('@shopify/react-native-skia/lib/module/web').then(({ LoadSkiaWeb }) =>
-      LoadSkiaWeb({
-        locateFile: (f) => `https://cdn.jsdelivr.net/npm/canvaskit-wasm@${CANVASKIT_VERSION}/bin/full/${f}`,
-      }),
-    )
+  if (!skiaWeb) skiaWeb = loadSkiaWeb()
   return skiaWeb
 }
 
