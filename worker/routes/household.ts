@@ -57,7 +57,9 @@ householdRoutes.get('/:orgId/household', requireOrg, async (c) => {
     household: {
       id: org.id,
       name: org.name,
-      mode: org.mode,
+      // JSON key stays `mode` (the OTA-client contract); organization.kind is the storage truth
+      // (§10.3 cutover complete — the legacy mode column is gone).
+      mode: org.kind,
       timezone: org.timezone,
       inviteCode: org.inviteCode,
       requirePhotoProof: org.requirePhotoProof,
@@ -126,8 +128,10 @@ householdRoutes.get('/:orgId/members', requireOrg, async (c) => {
     .select({
       memberId: schema.member.id,
       userId: schema.member.userId,
+      // §10.3 cutover complete: member.role IS the household vocabulary. Both JSON keys are kept
+      // so pre-cutover OTA clients (which read `householdRole`) keep rendering correctly.
       orgRole: schema.member.role,
-      householdRole: schema.member.householdRole,
+      householdRole: schema.member.role,
       displayName: schema.member.displayName,
       avatarUrl: schema.member.avatarUrl,
       favoriteColor: schema.member.favoriteColor,
@@ -243,6 +247,12 @@ householdRoutes.patch('/:orgId/members/:memberId', requireOrg, async (c) => {
   const updates: Record<string, unknown> = {}
   if (isSelf) for (const k of SELF_FIELDS) if (d[k] !== undefined) updates[k] = d[k]
   if (canManage) for (const k of ADMIN_FIELDS) if (d[k] !== undefined) updates[k] = d[k]
+  // §10.3 cutover complete: the API field stays `householdRole` (OTA-client contract) but the
+  // storage column is member.role — re-key before the write.
+  if (updates.householdRole !== undefined) {
+    updates.role = updates.householdRole
+    delete updates.householdRole
+  }
   if (Object.keys(updates).length === 0) return c.json({ error: 'no permitted fields to update' }, 400)
 
   const [row] = await getDb(c.env.DATABASE_URL)
@@ -263,16 +273,21 @@ householdRoutes.patch('/:orgId/members/:memberId', requireOrg, async (c) => {
 const setupInput = z.object({ mode: z.enum(['family', 'roommate']), timezone: z.string().max(64).optional() })
 
 householdRoutes.post('/:orgId/household/setup', requireOrg, async (c) => {
-  const session = c.get('session')
   const orgId = c.get('orgId')
+  const memberId = c.get('orgMemberId')
+  const role = c.get('orgRole')
   const db = getDb(c.env.DATABASE_URL)
 
-  const [m] = await db
-    .select({ id: schema.member.id, role: schema.member.role })
-    .from(schema.member)
-    .where(and(eq(schema.member.organizationId, orgId), eq(schema.member.userId, session.user.id)))
-    .limit(1)
-  if (!m || m.role !== 'owner') return c.json({ error: 'forbidden — only the creator sets up the household' }, 403)
+  // §10.3 cutover complete: applyCreatorRole stamps the creator with the default kind's
+  // creatorRole ('parent') at organization.create, so the creator check keys on the capability
+  // matrix, not the Better-Auth 'owner' literal. Nobody else can be in the org yet (the invite
+  // code is only minted below), so any org:settings-capable caller IS the creator. The 'owner'
+  // literal is still accepted transitionally: an org created by release-N code in the
+  // cutover→deploy window carries it until the post-deploy sweep.
+  const kind = c.get('orgKind')
+  if (!can(kind, role, 'org:settings') && role !== 'owner') {
+    return c.json({ error: 'forbidden — only the creator sets up the household' }, 403)
+  }
 
   const [org] = await db
     .select({ inviteCode: schema.organization.inviteCode })
@@ -292,15 +307,14 @@ householdRoutes.post('/:orgId/household/setup', requireOrg, async (c) => {
   await db
     .update(schema.organization)
     .set({
-      mode,
-      // SPINE §10.3: organization.kind IS the mode — dual-written until release N+1 drops mode.
+      // SPINE §10.3 cutover complete: organization.kind IS the mode (legacy column dropped).
       kind: mode,
       inviteCode: code,
       timezone: parsed.data.timezone ?? 'America/New_York',
       ...(trialDays > 0 ? { subscriptionStatus: 'trialing' as const, trialEndsAt } : {}),
     })
     .where(eq(schema.organization.id, orgId))
-  await db.update(schema.member).set({ householdRole: roleForJoin(mode, true) }).where(eq(schema.member.id, m.id))
+  await db.update(schema.member).set({ role: roleForJoin(mode, true) }).where(eq(schema.member.id, memberId))
   await db.insert(schema.choreCategory).values(
     DEFAULT_CATEGORIES.map((cat, i) => ({
       organizationId: orgId,

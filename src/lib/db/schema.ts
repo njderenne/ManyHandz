@@ -113,10 +113,10 @@ export const organization = pgTable('organization', {
   slug: text('slug').notNull().unique(),
   logo: text('logo'),
   metadata: text('metadata'),
-  /** Tenant flavor — SPINE §10.3 cutover: ManyHandz kinds are 'family' | 'roommate' | 'office'
-   *  (+ reserved 'personal', unused here — no autoPersonalOrg). MUST equal DEFAULT_KIND in
-   *  src/lib/config/roles.ts (a vitest asserts it). The legacy `mode` column below carries the
-   *  same value until release N+1 drops it. */
+  /** Tenant flavor — SPINE §10.3 cutover COMPLETE: ManyHandz kinds are 'family' | 'roommate' |
+   *  'office' (+ reserved 'personal', unused here — no autoPersonalOrg). MUST equal DEFAULT_KIND
+   *  in src/lib/config/roles.ts (a vitest asserts it). The legacy `mode` column was dropped at
+   *  release N+1. */
   kind: text('kind').notNull().default('family'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
@@ -131,9 +131,6 @@ export const organization = pgTable('organization', {
   trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
   // --- ManyHandz: household config + policy flags (Settings screen + POLICY_FLAGS read these). ---
-  /** DEPRECATED (SPINE §10.3 release N): superseded by `kind` above — kept dual-written until the
-   *  release N+1 migration drops it. Do not add new readers. */
-  mode: text('mode').notNull().default('family'), // 'family' | 'roommate' | 'office'
   inviteCode: text('invite_code').unique(), // 8-char join-by-code / QR code (minted on create)
   timezone: text('timezone').notNull().default('America/New_York'),
   requirePhotoProof: boolean('require_photo_proof').notNull().default(false),
@@ -164,13 +161,13 @@ export const member = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    /** SPINE §10.3 cutover COMPLETE: carries the HOUSEHOLD vocabulary (parent|kid|roommate|
+     *  manager|colleague) — the mode permission matrix keys off it. The transitional
+     *  `household_role` column was dropped at release N+1. Points/XP/streaks are DERIVED from
+     *  creditLedger + streak, never stored here (the Gains "derive at query time" lesson). */
     role: text('role').notNull().default('member'),
     /** Optional per-member display name within this org (falls back to user.name). */
     displayName: text('display_name'),
-    // --- ManyHandz: per-household identity. `householdRole` (parent|kid|roommate|manager|colleague)
-    //     drives the mode permission matrix; points/XP/streaks are DERIVED from creditLedger +
-    //     streak, never stored here (the Gains "derive at query time" lesson). ---
-    householdRole: text('household_role').notNull().default('roommate'),
     avatarUrl: text('avatar_url'),
     bio: text('bio'),
     birthday: text('birthday'), // YYYY-MM-DD; age computed in the app

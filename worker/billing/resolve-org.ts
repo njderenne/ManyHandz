@@ -34,17 +34,9 @@ import { can, normalizeKind } from '@/lib/config/roles'
 export type BillingMembership = {
   orgId: string
   kind: string
-  /** Better-Auth role — the vocabulary truth ONLY for the reserved personal kind. */
+  /** SPINE §10.3 cutover COMPLETE: member.role carries the household vocabulary (personal orgs
+   *  keep 'owner') — the same single read as requireOrg (worker/middleware/org.ts). */
   role: string
-  /** ManyHandz TRANSITIONAL (SPINE §10.3 release N): household-vocabulary truth for every
-   *  non-personal kind — the SAME dual-read as requireOrg (worker/middleware/org.ts). After the
-   *  N+1 `member.role := household_role` cutover, collapse this back to plain `role`. */
-  householdRole: string
-}
-
-/** The dual-read requireOrg uses — personal orgs keep Better-Auth vocabulary ('owner'). */
-function effectiveRole(m: BillingMembership): string {
-  return m.kind === 'personal' ? m.role : m.householdRole
 }
 
 /**
@@ -59,7 +51,7 @@ export function pickMembershipOrg(
 ): string | null {
   const active = activeOrgId ? memberships.find((m) => m.orgId === activeOrgId) : undefined
   if (active) return active.orgId
-  const billable = memberships.find((m) => can(normalizeKind(m.kind), effectiveRole(m), 'org:billing'))
+  const billable = memberships.find((m) => can(normalizeKind(m.kind), m.role, 'org:billing'))
   return billable?.orgId ?? null
 }
 
@@ -102,7 +94,6 @@ export async function resolveBillingOrgId(
       orgId: schema.member.organizationId,
       kind: schema.organization.kind,
       role: schema.member.role,
-      householdRole: schema.member.householdRole,
     })
     .from(schema.member)
     .innerJoin(schema.organization, eq(schema.organization.id, schema.member.organizationId))

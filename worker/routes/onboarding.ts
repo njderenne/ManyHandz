@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { getDb, schema } from '@/lib/db'
 import { requireSession, type AuthEnv } from '../middleware/org'
 import { requireTier } from '../entitlements'
-import { roleForJoin, type HouseholdMode } from '@/lib/config/modes'
+import { roleForJoin } from '@/lib/config/roles'
 import { APP_CONFIG } from '@/lib/config/app'
 
 /**
@@ -24,7 +24,8 @@ onboardingRoutes.get('/lookup', requireSession, async (c) => {
   const code = normalizeCode(c.req.query('code') ?? '')
   if (code.length < 4) return c.json({ error: 'invalid code' }, 400)
   const [org] = await getDb(c.env.DATABASE_URL)
-    .select({ name: schema.organization.name, mode: schema.organization.mode })
+    // JSON key stays `mode` (OTA-client contract); organization.kind is the storage truth (§10.3).
+    .select({ name: schema.organization.name, mode: schema.organization.kind })
     .from(schema.organization)
     .where(eq(schema.organization.inviteCode, code))
     .limit(1)
@@ -40,7 +41,7 @@ onboardingRoutes.post('/join', requireSession, async (c) => {
   const db = getDb(c.env.DATABASE_URL)
 
   const [org] = await db
-    .select({ id: schema.organization.id, mode: schema.organization.mode })
+    .select({ id: schema.organization.id, kind: schema.organization.kind })
     .from(schema.organization)
     .where(eq(schema.organization.inviteCode, code))
     .limit(1)
@@ -78,8 +79,8 @@ onboardingRoutes.post('/join', requireSession, async (c) => {
     id: crypto.randomUUID(),
     organizationId: org.id,
     userId: session.user.id,
-    role: 'member',
-    householdRole: roleForJoin(org.mode as HouseholdMode, false),
+    // §10.3 cutover complete: member.role carries the household vocabulary (SPINE §4.2 join rule).
+    role: roleForJoin(org.kind, false),
     displayName: session.user.name,
   })
   return c.json({ orgId: org.id })

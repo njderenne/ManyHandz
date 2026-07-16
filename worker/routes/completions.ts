@@ -180,7 +180,8 @@ completionRoutes.post('/:orgId/assignments/:assignmentId/complete', requireOrg, 
   if (!isAssignee && !can(ctx.mode, ctx.householdRole, 'chore:assign')) return c.json({ error: 'forbidden' }, 403)
 
   const [assignee] = await db
-    .select({ id: schema.member.id, userId: schema.member.userId, householdRole: schema.member.householdRole })
+    // §10.3 cutover complete: member.role carries the household vocabulary.
+    .select({ id: schema.member.id, userId: schema.member.userId, householdRole: schema.member.role })
     .from(schema.member)
     .where(and(eq(schema.member.id, a.assignedToMemberId), eq(schema.member.organizationId, ctx.orgId)))
     .limit(1)

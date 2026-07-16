@@ -214,7 +214,7 @@ rewardRoutes.post('/:orgId/rewards/:rewardId/redeem', requireOrg, requireCapabil
     const [parent] = await db
       .select({ id: schema.member.id })
       .from(schema.member)
-      .where(and(eq(schema.member.organizationId, ctx.orgId), eq(schema.member.householdRole, 'parent'), eq(schema.member.isActive, true)))
+      .where(and(eq(schema.member.organizationId, ctx.orgId), eq(schema.member.role, 'parent'), eq(schema.member.isActive, true)))
       .limit(1)
     if (parent) {
       const [settlement] = await db

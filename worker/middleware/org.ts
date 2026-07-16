@@ -90,7 +90,6 @@ export const requireOrg: MiddlewareHandler<AuthEnv> = async (c, next) => {
     .select({
       id: schema.member.id,
       role: schema.member.role,
-      householdRole: schema.member.householdRole,
       kind: schema.organization.kind,
     })
     .from(schema.member)
@@ -106,12 +105,10 @@ export const requireOrg: MiddlewareHandler<AuthEnv> = async (c, next) => {
   if (!membership) return c.json({ error: 'forbidden' }, 403)
   c.set('orgId', orgId)
   c.set('orgKind', membership.kind)
-  // TRANSITIONAL (SPINE §10.3 release N): member.householdRole is the household-vocabulary truth;
-  // member.role still carries Better-Auth's owner/member until the post-deploy cutover
-  // (UPDATE member SET role = household_role) and the release-N+1 column drop. New joins
-  // dual-write both columns (worker/routes/onboarding.ts / household.ts), so this read stays
-  // correct for every row. After N+1, revert to plain member.role (the template shape).
-  c.set('orgRole', membership.kind === 'personal' ? membership.role : membership.householdRole)
+  // SPINE §10.3 cutover COMPLETE: member.role carries the household vocabulary (parent|kid|
+  // roommate|manager|colleague; personal orgs keep 'owner') — the template shape, restored at
+  // release N+1 after the live `UPDATE member SET role = household_role` cutover.
+  c.set('orgRole', membership.role)
   c.set('orgMemberId', membership.id)
   return next()
 }

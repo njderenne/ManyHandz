@@ -1,15 +1,17 @@
 import { betterAuth, type BetterAuthOptions } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { bearer, organization } from 'better-auth/plugins'
+import { defaultAc, defaultRoles } from 'better-auth/plugins/organization/access'
 import { expo } from '@better-auth/expo'
 import { passkey } from '@better-auth/passkey'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 import { getDb, schema } from '@/lib/db'
 import { APP_CONFIG } from '@/lib/config/app'
+import { can, roleForJoin } from '@/lib/config/roles'
 import { ORG_ADDITIONAL_FIELDS } from '@/lib/auth/org-fields'             // B1
 import { createMailer } from './email/mailer'
 import { provisionNewUser, ensurePersonalOrg, sendWelcomeOnce } from './provision-user'
-import { assertKindCreatable } from './lib/spine-hooks'                    // B1
+import { assertKindCreatable, applyCreatorRole, mapInvitationRole } from './lib/spine-hooks' // B1
 import { membershipCapFor, assertTenantCapacity } from './billing/limits'  // A1
 import { bootstrapTrial } from './billing/trial'                           // A1
 import { buildTrustedOrigins } from './lib/trusted-origins'                // B6
@@ -28,12 +30,14 @@ import type { Env } from './env'
  * Social providers are only enabled when their credentials are present, so a freshly minted
  * app boots with email + passkey and lights up Google/Apple once secrets are set.
  *
- * MANYHANDZ (SPINE §10.3 release N): the chassis `applyCreatorRole` afterCreate rewrite is
- * deliberately NOT wired — households are created via the two-step flow (organization.create →
- * POST /:orgId/household/setup), and the setup route's creator check keys on the Better-Auth
- * 'owner' role (SPINE §4.3 interim rule). The setup route writes the household-vocabulary role
- * onto member.householdRole (the transitional truth requireOrg reads) + organization.kind.
- * Re-wire applyCreatorRole at the release-N+1 column drop.
+ * MANYHANDZ (SPINE §10.3 cutover COMPLETE — release N+1): member.role carries the HOUSEHOLD
+ * vocabulary (parent|kid|roommate|manager|colleague; personal orgs keep 'owner').
+ * `applyCreatorRole` is wired (creator of a fresh org gets the default kind's creatorRole —
+ * 'parent' — and POST /:orgId/household/setup re-stamps it if the user picks another mode).
+ * PLUGIN_ROLES below teaches Better-Auth's own permission checks the household vocabulary so
+ * plugin-native surfaces (the Team screen's email invites: invitation create/cancel) keep
+ * working; `afterAcceptInvitation` maps accepted invitation roles into the kind's vocabulary
+ * (SPINE §4.2 join rule). The capability routes remain the canonical gates (B-1).
  */
 let cached: { env: Env; auth: ReturnType<typeof createAuth> } | null = null
 
@@ -41,6 +45,43 @@ let cached: { env: Env; auth: ReturnType<typeof createAuth> } | null = null
 export function getAuth(env: Env) {
   if (!cached || cached.env !== env) cached = { env, auth: createAuth(env) }
   return cached.auth
+}
+
+/**
+ * Plugin-visible role table (SPINE §10.3 cutover): once member.role adopted the household
+ * vocabulary, Better-Auth's OWN permission checks (hasPermission keyed on its static
+ * owner/admin/member roles) would 403 every household member on the plugin-native surfaces the
+ * app still uses — the Team screen's email invites (invitation:create on send/resend,
+ * invitation:cancel on revoke). Declaring the household roles here mirrors the KIND_CONFIGS
+ * capability matrix onto the plugin's statement space:
+ *
+ *   parent / roommate / manager → admin-shaped (they hold org:settings/org:delete,
+ *                                 member:invite/set_role/remove in roles.ts)
+ *   kid / colleague             → member-shaped (no privileged plugin action)
+ *
+ * The roles are GLOBAL to the plugin while vocabularies are per-kind — safe because the DB can
+ * only ever hold a role that is valid for its org's kind (setup/join/PATCH validate, and the
+ * cutover DML was vocabulary-guarded). Capability routes remain the canonical gates (B-1); this
+ * table only keeps the plugin-native surfaces honest.
+ */
+const householdAdminAc = defaultAc.newRole({
+  organization: ['update', 'delete'],
+  member: ['create', 'update', 'delete'],
+  invitation: ['create', 'cancel'],
+})
+const householdMemberAc = defaultAc.newRole({
+  organization: [],
+  member: [],
+  invitation: [],
+  ac: ['read'],
+})
+const PLUGIN_ROLES = {
+  ...defaultRoles,
+  parent: householdAdminAc,
+  roommate: householdAdminAc,
+  manager: householdAdminAc,
+  kid: householdMemberAc,
+  colleague: householdMemberAc,
 }
 
 export function createAuth(env: Env) {
@@ -89,41 +130,55 @@ export function createAuth(env: Env) {
         //
         // beforeDelete runs BEFORE the user cascade (better-auth update-user.ts), so the deleting
         // user's member rows still exist. For each org this user OWNS:
-        //   • no other members → DELETE the org; its onDelete:'cascade' FKs wipe all org data
+        //   • no other live members → DELETE the org; its onDelete:'cascade' FKs wipe all org data
         //     (fulfilling the erasure promise).
-        //   • other members remain → PROMOTE the earliest-joined remaining member to owner so they
-        //     keep the org (kinder than blocking deletion; never orphans the org).
-        // A no-op for a user who owns no orgs (non-owner member, or no membership at all). DB errors
-        // SURFACE (the hook awaits, no swallow) — failing the delete is correct vs. leaking a zombie.
-        // NOTE (§10.3): keyed on member.role='owner' — every household creator carries it until the
-        // member.role := household_role cutover; the cutover wave must re-key this on the
-        // household-vocabulary creator roles.
+        //   • live members remain but none can administer → PROMOTE the earliest-joined one to the
+        //     kind's creator role (kinder than blocking deletion; never orphans the org).
+        //   • a capable member remains (e.g. the other parent) → nothing to do.
+        // A no-op for a user who owns no orgs (non-privileged member, or no membership at all).
+        // DB errors SURFACE (the hook awaits, no swallow) — failing the delete is correct vs.
+        // leaking a zombie.
+        // (§10.3 cutover COMPLETE): re-keyed from the 'owner' literal onto the capability matrix —
+        // "owns" now means the (kind, role) grants org:delete ('parent'/'roommate'/'manager', and
+        // 'owner' in a personal org). Unlike the old single-owner world, several members may hold
+        // it (two parents), so promotion only fires when NO remaining live member could still
+        // administer the org.
         beforeDelete: async (deletingUser) => {
-          const ownedOrgs = await db
-            .select({ organizationId: schema.member.organizationId })
+          const memberships = await db
+            .select({
+              organizationId: schema.member.organizationId,
+              role: schema.member.role,
+              kind: schema.organization.kind,
+            })
             .from(schema.member)
-            .where(and(eq(schema.member.userId, deletingUser.id), eq(schema.member.role, 'owner')))
-          for (const { organizationId } of ownedOrgs) {
-            // Earliest-joined remaining member (deterministic successor owner), if any.
-            const [successor] = await db
-              .select({ id: schema.member.id })
+            .innerJoin(schema.organization, eq(schema.member.organizationId, schema.organization.id))
+            .where(and(eq(schema.member.userId, deletingUser.id), isNull(schema.member.archivedAt)))
+          const owned = memberships.filter((m) => can(m.kind, m.role, 'org:delete'))
+          for (const { organizationId, kind } of owned) {
+            // LIVE remaining members, earliest-joined first (archived members lost org access —
+            // they are neither successors nor a reason to keep the org alive).
+            const remaining = await db
+              .select({ id: schema.member.id, role: schema.member.role })
               .from(schema.member)
               .where(
                 and(
                   eq(schema.member.organizationId, organizationId),
                   ne(schema.member.userId, deletingUser.id),
+                  isNull(schema.member.archivedAt),
                 ),
               )
               .orderBy(schema.member.createdAt)
-              .limit(1)
-            if (successor) {
+            if (remaining.length === 0) {
+              // No live members left — drop the org; FK cascade erases all org-scoped data.
+              await db.delete(schema.organization).where(eq(schema.organization.id, organizationId))
+            } else if (!remaining.some((m) => can(kind, m.role, 'org:settings'))) {
+              // Nobody left who can administer (e.g. sole parent leaves a family of kids) —
+              // promote the earliest-joined member to the kind's creator role so the org is
+              // never orphaned (the old promote-to-owner, vocabulary-aware).
               await db
                 .update(schema.member)
-                .set({ role: 'owner' })
-                .where(eq(schema.member.id, successor.id))
-            } else {
-              // Sole-member org — drop it; FK cascade erases all org-scoped data.
-              await db.delete(schema.organization).where(eq(schema.organization.id, organizationId))
+                .set({ role: roleForJoin(kind, true) })
+                .where(eq(schema.member.id, remaining[0].id))
             }
           }
         },
@@ -166,6 +221,12 @@ export function createAuth(env: Env) {
       // organization.create from the phone (sign-in works — no cookie yet — which hides the bug).
       expo(),
       organization({
+        // §10.3 — teach the plugin's own permission checks the household vocabulary (see
+        // PLUGIN_ROLES above). Without this, a 'parent' could not send an email invite.
+        // (`ac` is deliberately NOT passed: hasPermission reads `roles` directly, and the ac
+        // option's narrowed generics fight the pinned types — it only matters for
+        // dynamicAccessControl, which this app doesn't use.)
+        roles: PLUGIN_ROLES,
         sendInvitationEmail: async (data) => {
           const url = `${env.BETTER_AUTH_URL}/accept-invite/${data.id}`
           await mailer.sendOrgInvite(data.email, data.inviter.user.name, data.organization.name, url)
@@ -186,11 +247,24 @@ export function createAuth(env: Env) {
             // OWNS, personal excluded; throws APIError('PAYMENT_REQUIRED') with tenant-alias copy.
             await assertTenantCapacity(db, user.id)
           },
-          afterCreateOrganization: async ({ organization: org }) => {
+          afterCreateOrganization: async ({ organization: org, member }) => {
+            // SPINE §10.3 (cutover complete) — rewrite the creator's member.role to the kind's
+            // creatorRole ('parent' for the default family kind; the household/setup route
+            // re-stamps it if the user picks a different mode at setup).
+            await applyCreatorRole(db, org, member)
             // BILLING §7.3 — trial bootstrap; no-op unless trialOnOrgCreate==='all' && trialDays>0.
             // (The household/setup route re-stamps the trial from setup time — same config source.)
             await bootstrapTrial(db, org.id)
-            // §10.3 interim: NO applyCreatorRole — see the header note.
+          },
+          afterAcceptInvitation: async ({ invitation, member, organization: org }) => {
+            // SPINE §4.2 join rule — the plugin's accept copies invitation.role verbatim onto the
+            // member row, but email invites carry the plugin's 'member'/'admin' vocabulary. Map it
+            // into the org kind's household vocabulary ('admin'→creatorRole,
+            // 'member'/unknown→defaultJoinerRole; an already-valid household role passes through).
+            const mapped = mapInvitationRole((org as { kind?: string | null }).kind, invitation.role)
+            if (mapped !== member.role) {
+              await db.update(schema.member).set({ role: mapped }).where(eq(schema.member.id, member.id))
+            }
           },
         },
       }),

@@ -88,9 +88,9 @@ async function run(mw: unknown, ctx: ReturnType<typeof makeCtx>) {
 }
 
 const SESSION = { user: { id: 'user-1', name: 'Test' }, session: { activeOrganizationId: 'org-1' } }
-// ManyHandz transitional shape (SPINE §10.3 release N): member.role still carries Better-Auth's
-// vocabulary while householdRole is the truth requireOrg resolves for non-personal kinds.
-const MEMBERSHIP = { id: 'member-1', role: 'owner', householdRole: 'parent', kind: 'family' }
+// SPINE §10.3 cutover COMPLETE: member.role carries the household vocabulary — requireOrg reads
+// it directly (the template shape; the transitional household_role column is gone).
+const MEMBERSHIP = { id: 'member-1', role: 'parent', kind: 'family' }
 
 beforeEach(() => {
   h.state.results = []
@@ -128,7 +128,7 @@ describe('requireOrg', () => {
     expect(h.state.selects).toBe(1) // the SPINE §4 "one joined read" guarantee
     expect(ctx.vars.get('orgId')).toBe('org-1')
     expect(ctx.vars.get('orgKind')).toBe('family')
-    expect(ctx.vars.get('orgRole')).toBe('parent') // householdRole, not the Better-Auth 'owner'
+    expect(ctx.vars.get('orgRole')).toBe('parent') // member.role IS the household vocabulary
     expect(ctx.vars.get('orgMemberId')).toBe('member-1')
   })
 

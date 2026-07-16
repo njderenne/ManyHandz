@@ -15,6 +15,7 @@ import {
  *
  *   beforeCreateOrganization → assertKindCreatable(db, org, user)
  *   afterCreateOrganization  → applyCreatorRole(db, org, member)
+ *   afterAcceptInvitation    → mapInvitationRole(org.kind, invitation.role)   (§10.3 cutover)
  *
  * They live here (not inline in auth.ts) so the orchestrator-owned auth.ts carries one import
  * line per concern and the logic stays unit-testable. Both are grindline-production-proven
@@ -111,4 +112,27 @@ export async function applyCreatorRole(
     .update(schema.member)
     .set({ role: creatorRole })
     .where(eq(schema.member.id, member.id))
+}
+
+/**
+ * Map an accepted invitation's role into the org kind's vocabulary (SPINE §4.2 join rule,
+ * ManyHandz release N+1). Better-Auth's accept-invitation copies invitation.role verbatim onto
+ * the member row, but the chassis Team screen invites with the plugin's static 'member'/'admin'
+ * vocabulary — which no household kind declares. Pure; total (never throws on stale data):
+ *
+ *  - role already ∈ KIND_CONFIGS[kind].roles → keep it (an invite that carried a household role,
+ *    e.g. via the capability-gated invite route, passes through untouched)
+ *  - 'owner' / 'admin' (privileged Better-Auth vocabulary) → the kind's creatorRole
+ *  - anything else ('member', unknown/legacy strings)     → the kind's defaultJoinerRole
+ *  - reserved personal kind → role kept verbatim (personal orgs keep Better-Auth vocabulary,
+ *    and never send invitations anyway)
+ *  - unknown kind → resolved through DEFAULT_KIND (same posture as roleForJoin)
+ */
+export function mapInvitationRole(kind: unknown, invitedRole: string): string {
+  if (kind === PERSONAL_KIND) return invitedRole
+  const k: Kind =
+    typeof kind === 'string' && Object.hasOwn(KIND_CONFIGS, kind) ? (kind as Kind) : DEFAULT_KIND
+  const cfg = KIND_CONFIGS[k]
+  if ((cfg.roles as readonly string[]).includes(invitedRole)) return invitedRole
+  return invitedRole === 'owner' || invitedRole === 'admin' ? cfg.creatorRole : cfg.defaultJoinerRole
 }

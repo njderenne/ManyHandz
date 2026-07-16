@@ -34,11 +34,11 @@ function fakeDb(results: unknown[][] = []): DB {
   return chain as DB
 }
 
-const m = (orgId: string, kind: string, householdRole: string, role = 'member'): BillingMembership => ({
+// §10.3 cutover complete: member.role IS the household vocabulary (personal orgs keep 'owner').
+const m = (orgId: string, kind: string, role: string): BillingMembership => ({
   orgId,
   kind,
   role,
-  householdRole,
 })
 
 describe('ManyHandz posture canary', () => {
@@ -69,9 +69,8 @@ describe('pickMembershipOrg (pure core: active session org → earliest billing-
     expect(pickMembershipOrg(null, [m('org-rm', 'roommate', 'roommate')])).toBe('org-rm')
   })
 
-  it('personal kind reads member.role (Better-Auth vocabulary), not householdRole', () => {
-    // Solo-first apps' personal org: role='owner' grants everything; householdRole is meaningless.
-    expect(pickMembershipOrg(null, [m('org-p', 'personal', 'kid', 'owner')])).toBe('org-p')
+  it("personal kind keeps Better-Auth vocabulary — 'owner' grants everything", () => {
+    expect(pickMembershipOrg(null, [m('org-p', 'personal', 'owner')])).toBe('org-p')
   })
 
   it('returns null when the buyer administers nothing and has no active org', () => {
