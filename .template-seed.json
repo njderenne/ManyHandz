@@ -5,8 +5,8 @@
   "seedCommit": "89abb7cdf42a9a7c64f536ec2812517218008be3",
   "seedDate": "2026-06-19",
   "seedConfidence": "exact",
-  "lastSyncCommit": "ed8e99c92cc800c21387aa3b72169829bfdfc957",
-  "lastSyncDate": "2026-07-13",
+  "lastSyncCommit": "6ce9d704e86a5e4f5b06257e85a485c42ad68151",
+  "lastSyncDate": "2026-07-16",
   "knownStragglers": [],
   "note": "Template lineage stamp — backfilled by app-factory builder/fleet/retro-stamp.js from builder/fleet/fleet.json; updated by mark-sync.js after each backport wave. Commit it with the app.",
   "stampedAt": "2026-07-05T05:57:12.702Z"
