@@ -9,8 +9,11 @@ routes = [{ pattern = "manyhandz.io", custom_domain = true }]
 
 # Plain vars. ENVIRONMENT=development unlocks dev-only routes (/api/dev/*), email previews, and the
 # readiness doctor's /api/dev/health integrity probe during build-out. Omit/flip for production.
+# MIN_APP_VERSION is the /api/meta force-update floor — permissive (current app version); raise it
+# to force store updates.
 [vars]
 ENVIRONMENT = "development"
+MIN_APP_VERSION = "0.1.0"
 
 # Static web assets (the Expo web export → ../dist, written by `npm run export:web` at the
 # app root). Unmatched routes fall back to index.html so the React Native Web build's
